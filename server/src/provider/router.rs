@@ -82,7 +82,7 @@ impl Provider for ProviderRouter {
                     ProviderType::Anthropic => ProviderKind::Anthropic,
                 },
                 request_url,
-                api_key: endpoint.api_key,
+                api_key: endpoint.endpoint.api_key.clone().unwrap_or_default(),
                 custom_headers: custom_headers(&endpoint.custom_headers)?,
                 max_output_tokens: model.max_output_tokens,
                 request_timeout,

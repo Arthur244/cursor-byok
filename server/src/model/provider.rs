@@ -51,6 +51,7 @@ pub struct ProviderEndpoint {
     pub name: String,
     pub provider_type: ProviderType,
     pub base_url: String,
+    pub api_key: Option<String>,
     pub has_api_key: bool,
     pub custom_headers: serde_json::Value,
     pub extra_params: serde_json::Value,
@@ -61,7 +62,6 @@ pub struct ProviderEndpoint {
 #[derive(Clone, Debug)]
 pub struct ProviderEndpointSecret {
     pub endpoint: ProviderEndpoint,
-    pub api_key: String,
     pub custom_headers: serde_json::Value,
 }
 

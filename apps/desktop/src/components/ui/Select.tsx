@@ -178,7 +178,7 @@ export function MultiCombobox({ value, options = [], placeholder, disabled, appe
   return <div className={styles.comboRow}><div ref={root} className={styles.multiCombo} data-open={open || undefined}>
     <div className={styles.multiValues}>
       {value.length > 0 && <span className={styles.multiCount}>{t("已选择 {count} 个", { count: value.length })}</span>}
-      <input ref={input} value={query} placeholder={value.length ? t("继续选择或输入") : placeholder} disabled={disabled} role="combobox" aria-haspopup="listbox" aria-controls={open ? menuId : undefined} aria-expanded={open} aria-autocomplete="list" onFocus={() => { if (options.length) setOpen(true); }} onChange={(event) => { setQuery(event.target.value); setActive(0); if (options.length) setOpen(true); }} onKeyDown={(event) => {
+      <input ref={input} value={query} placeholder={value.length ? t("继续选择或输入") : placeholder} disabled={disabled} role="combobox" aria-haspopup="listbox" aria-controls={open ? menuId : undefined} aria-expanded={open} aria-autocomplete="list" onFocus={() => { if (options.length) setOpen(true); }} onBlur={() => add(query)} onChange={(event) => { setQuery(event.target.value); setActive(0); if (options.length) setOpen(true); }} onKeyDown={(event) => {
         if (event.key === "ArrowDown") { event.preventDefault(); move(1); }
         if (event.key === "ArrowUp") { event.preventDefault(); move(-1); }
         if (event.key === "Enter") {

@@ -129,11 +129,19 @@ impl CursorSession {
                     checkpoint_worker_open = false;
                 }
                 Input::Completion(completion) => {
-                    self.forward_completion(completion, &mut completions)
-                        .await?;
+                    if let Some(completion) = self
+                        .forward_completion(completion, &mut completions)
+                        .await?
+                    {
+                        ready.push_back(completion);
+                    }
                 }
                 Input::CompletionResult(Some(result)) => {
-                    self.forward_completion(result?, &mut completions).await?;
+                    if let Some(completion) =
+                        self.forward_completion(result?, &mut completions).await?
+                    {
+                        ready.push_back(completion);
+                    }
                 }
                 Input::CompletionResult(None) => {
                     return Err(Error::Protocol("tool result channel closed".into()));
@@ -578,7 +586,7 @@ impl CursorSession {
         &self,
         mut completion: ToolCompletion,
         completions: &mut HashMap<String, ToolCompletion>,
-    ) -> Result<()> {
+    ) -> Result<Option<ToolCompletion>> {
         if let Some(image) = completion.take_read_image() {
             let blob_id = self.store.put_blob(&image.data, &[]).await?;
             completion.persist_read_image(&blob_id, &image)?;
@@ -600,7 +608,14 @@ impl CursorSession {
             .commands
             .send(ClientCommand::ToolResult(result.clone()))
             .await
-            .map_err(|_| Error::RunNotFound(self.context.request_id.clone()))
+            .map_err(|_| Error::RunNotFound(self.context.request_id.clone()))?;
+        let Some(dispatched) = self.tools.continue_after(&result.call_id).await? else {
+            return Ok(None);
+        };
+        for message in dispatched.messages {
+            self.handle.emit(&message)?;
+        }
+        Ok(dispatched.completion)
     }
 
     async fn forward_injection(&mut self, action: pb::InjectContextAction) -> Result<()> {

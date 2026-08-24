@@ -18,7 +18,7 @@ use crate::{
         ContentPart, CursorRunTraceArtifact, CursorRunTraceSummary, LlmCallRequest,
         LlmCallResponseChunk, LlmCallSummary, ModelInvocation, ModelRequest, ModelSpec, Overview,
         ProjectedContent, ProjectedMessage, PromptSpec, ProviderEndpoint, ProviderEndpointInput,
-        ProviderEndpointSecret, ProviderModel, ProviderModelInput, ProviderType, Role,
+        ProviderModel, ProviderModelInput, ProviderType, Role,
     },
     provider::{ModelEvent, Provider},
     store::{
@@ -349,34 +349,15 @@ impl ControlService {
 
     pub async fn discover_input(&self, input: &ProviderEndpointInput) -> Result<DiscoveredModels> {
         let client = crate::network::client(&self.store).await?;
-        let endpoint = ProviderEndpoint {
-            provider_id: 0,
-            name: input.name.clone(),
-            provider_type: input.provider_type,
-            base_url: crate::model::normalize_base_url(&input.base_url)?,
-            has_api_key: input
-                .api_key
-                .as_deref()
-                .is_some_and(|value| !value.is_empty()),
-            custom_headers: input.custom_headers.clone(),
-            extra_params: input.extra_params.clone(),
-            created_at_ms: 0,
-            updated_at_ms: 0,
-        };
-        let secret = ProviderEndpointSecret {
-            endpoint,
-            api_key: input.api_key.clone().unwrap_or_default(),
-            custom_headers: input.custom_headers.clone(),
-        };
-        let mut models = match input.provider_type {
-            ProviderType::OpenAiChat | ProviderType::OpenAiResponses => {
-                openai_models(&client, &secret).await?
-            }
-            ProviderType::Anthropic => anthropic_models(&client, &secret).await?,
-        };
-        models.sort();
-        models.dedup();
-        Ok(DiscoveredModels { models })
+        let base_url = crate::model::normalize_base_url(&input.base_url)?;
+        discover_provider_models(
+            &client,
+            input.provider_type,
+            &base_url,
+            input.api_key.as_deref().unwrap_or_default(),
+            &input.custom_headers,
+        )
+        .await
     }
 
     pub async fn discover_models(&self, provider_id: i64) -> Result<DiscoveredModels> {
@@ -386,15 +367,14 @@ impl ControlService {
             .provider(provider_id)
             .await?
             .ok_or_else(|| Error::RunNotFound(format!("provider {provider_id}")))?;
-        let mut models = match provider.endpoint.provider_type {
-            ProviderType::OpenAiChat | ProviderType::OpenAiResponses => {
-                openai_models(&client, &provider).await?
-            }
-            ProviderType::Anthropic => anthropic_models(&client, &provider).await?,
-        };
-        models.sort();
-        models.dedup();
-        Ok(DiscoveredModels { models })
+        discover_provider_models(
+            &client,
+            provider.endpoint.provider_type,
+            &provider.endpoint.base_url,
+            provider.endpoint.api_key.as_deref().unwrap_or_default(),
+            &provider.custom_headers,
+        )
+        .await
     }
 
     pub async fn calls(&self, limit: i64) -> Result<Vec<CallSummary>> {
@@ -606,15 +586,51 @@ fn readable_utf8(data: &[u8]) -> Option<&str> {
         .then_some(value)
 }
 
+async fn discover_provider_models(
+    client: &reqwest::Client,
+    provider_type: ProviderType,
+    base_url: &str,
+    api_key: &str,
+    custom_headers: &serde_json::Value,
+) -> Result<DiscoveredModels> {
+    let mut models = match provider_type {
+        ProviderType::OpenAiChat | ProviderType::OpenAiResponses => {
+            openai_models(client, base_url, api_key, custom_headers).await?
+        }
+        ProviderType::Anthropic => {
+            anthropic_models(client, base_url, api_key, custom_headers).await?
+        }
+    };
+    models.sort();
+    models.dedup();
+    Ok(DiscoveredModels { models })
+}
+
+fn model_discovery_url(base_url: &str) -> Result<Url> {
+    let mut url = Url::parse(base_url)
+        .map_err(|error| Error::Config(format!("invalid provider base URL: {error}")))?;
+    if url.host_str().is_none() {
+        return Err(Error::Config(
+            "provider base URL must contain a host".into(),
+        ));
+    }
+    url.set_path("/v1/models");
+    url.set_query(None);
+    url.set_fragment(None);
+    Ok(url)
+}
+
 async fn openai_models(
     client: &reqwest::Client,
-    provider: &ProviderEndpointSecret,
+    base_url: &str,
+    api_key: &str,
+    custom_headers: &serde_json::Value,
 ) -> Result<Vec<String>> {
-    let mut request = client.get(format!("{}/models", provider.endpoint.base_url));
-    if !provider.api_key.is_empty() {
-        request = request.bearer_auth(&provider.api_key);
+    let mut request = client.get(model_discovery_url(base_url)?);
+    if !api_key.is_empty() {
+        request = request.bearer_auth(api_key);
     }
-    let response = apply_custom_headers(request, &provider.custom_headers)?
+    let response = apply_discovery_headers(request, custom_headers)?
         .send()
         .await?;
     let status = response.status();
@@ -629,22 +645,24 @@ async fn openai_models(
 
 async fn anthropic_models(
     client: &reqwest::Client,
-    provider: &ProviderEndpointSecret,
+    base_url: &str,
+    api_key: &str,
+    custom_headers: &serde_json::Value,
 ) -> Result<Vec<String>> {
     let mut after_id = None::<String>;
     let mut found = BTreeSet::new();
     loop {
         let mut request = client
-            .get(format!("{}/models", provider.endpoint.base_url))
+            .get(model_discovery_url(base_url)?)
             .query(&[("limit", "100")])
             .header("anthropic-version", "2023-06-01");
-        if !provider.api_key.is_empty() {
-            request = request.header("x-api-key", &provider.api_key);
+        if !api_key.is_empty() {
+            request = request.header("x-api-key", api_key);
         }
         if let Some(after_id) = &after_id {
             request = request.query(&[("after_id", after_id)]);
         }
-        let response = apply_custom_headers(request, &provider.custom_headers)?
+        let response = apply_discovery_headers(request, custom_headers)?
             .send()
             .await?;
         let status = response.status();
@@ -699,7 +717,7 @@ fn estimate_output_tokens(output: &str) -> u64 {
     }
 }
 
-fn apply_custom_headers(
+fn apply_discovery_headers(
     mut request: reqwest::RequestBuilder,
     headers: &serde_json::Value,
 ) -> Result<reqwest::RequestBuilder> {
@@ -707,6 +725,9 @@ fn apply_custom_headers(
         .as_object()
         .ok_or_else(|| Error::Config("custom headers must be an object".into()))?;
     for (name, value) in object {
+        if name.eq_ignore_ascii_case("user-agent") {
+            continue;
+        }
         let value = value
             .as_str()
             .ok_or_else(|| Error::Config(format!("custom header {name} must be a string")))?;
@@ -837,5 +858,89 @@ mod tests {
     fn connectivity_output_token_estimate_handles_words_and_empty_text() {
         assert_eq!(super::estimate_output_tokens("1 2 3"), 3);
         assert_eq!(super::estimate_output_tokens(""), 0);
+    }
+
+    #[test]
+    fn model_discovery_url_uses_only_the_provider_origin() {
+        assert_eq!(
+            super::model_discovery_url("https://example.com:8443/arbitrary/v1/chat/completions")
+                .unwrap()
+                .as_str(),
+            "https://example.com:8443/v1/models"
+        );
+    }
+
+    #[tokio::test]
+    async fn model_discovery_does_not_inherit_user_agent_or_request_body_settings() {
+        type CapturedRequest = (
+            axum::http::Method,
+            axum::http::Uri,
+            axum::http::HeaderMap,
+            bytes::Bytes,
+        );
+
+        async fn models(
+            axum::extract::State(sender): axum::extract::State<
+                tokio::sync::mpsc::UnboundedSender<CapturedRequest>,
+            >,
+            request: axum::extract::Request,
+        ) -> axum::Json<serde_json::Value> {
+            let (parts, body) = request.into_parts();
+            let body = axum::body::to_bytes(body, usize::MAX).await.unwrap();
+            sender
+                .send((parts.method, parts.uri, parts.headers, body))
+                .unwrap();
+            axum::Json(serde_json::json!({ "data": [{ "id": "model-a" }] }))
+        }
+
+        let (sender, mut requests) = tokio::sync::mpsc::unbounded_channel();
+        let app = axum::Router::new()
+            .route("/v1/models", axum::routing::get(models))
+            .with_state(sender);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("discovery.db").display()
+        ))
+        .await
+        .unwrap();
+        let service = ControlService::new(
+            store,
+            Arc::new(TestProvider {
+                invocation: Arc::new(Mutex::new(None)),
+            }),
+        )
+        .unwrap();
+        let result = service
+            .discover_input(&ProviderEndpointInput {
+                name: "Test".into(),
+                provider_type: ProviderType::OpenAiResponses,
+                base_url: format!("http://{address}/custom/responses"),
+                api_key: Some("secret".into()),
+                custom_headers: serde_json::json!({
+                    "uSeR-aGeNt": "inherited-user-agent",
+                    "x-tenant": "tenant-a"
+                }),
+                extra_params: serde_json::json!({ "temperature": 0.7 }),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result.models, vec!["model-a"]);
+        let (method, uri, headers, body) = requests.recv().await.unwrap();
+        assert_eq!(method, axum::http::Method::GET);
+        assert_eq!(uri.path(), "/v1/models");
+        assert!(body.is_empty());
+        assert!(headers.get(axum::http::header::USER_AGENT).is_none());
+        assert_eq!(headers.get("x-tenant").unwrap(), "tenant-a");
+        assert_eq!(
+            headers.get(axum::http::header::AUTHORIZATION).unwrap(),
+            "Bearer secret"
+        );
+        server.abort();
     }
 }

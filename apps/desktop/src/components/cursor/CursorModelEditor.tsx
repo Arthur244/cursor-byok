@@ -1,5 +1,5 @@
 import type { ModelInput, Provider, ProviderInput, ProviderType } from "../../api";
-import { FormField, TextInput } from "../ui/FormControls";
+import { FormField, SecretTextInput, TextInput } from "../ui/FormControls";
 import { Checkbox } from "../ui/Checkbox";
 import { JsonEditor } from "../ui/JsonEditor";
 import { Combobox, MultiCombobox, Select } from "../ui/Select";
@@ -72,7 +72,7 @@ export function CursorModelEditor({ draft, providers, editing, modelOptions, dis
     <div className={styles.grid}>
       {!editing && draft.providerMode === "new" && <>
         <FormField label="Base URL" hint={t("模型服务的 API 根地址，例如 https://api.openai.com/v1。")}><TextInput placeholder="例如：https://api.openai.com/v1" value={draft.provider.base_url} onChange={(event) => setProvider({ base_url: event.target.value })} /></FormField>
-        <FormField label="API Key" hint={t("访问模型服务所需的密钥。")}><TextInput type="password" placeholder="例如：sk-xxxxxx" autoComplete="off" value={draft.provider.api_key ?? ""} onChange={(event) => setProvider({ api_key: event.target.value })} /></FormField>
+        <FormField label="API Key" hint={t("访问模型服务所需的密钥。")}><SecretTextInput placeholder="例如：sk-xxxxxx" autoComplete="off" value={draft.provider.api_key ?? ""} onChange={(event) => setProvider({ api_key: event.target.value })} /></FormField>
       </>}
       <FormField label={t("端点类型")} hint={t("默认继承上游，可为当前模型单独修改。")}><Select ariaLabel={t("端点类型")} value={draft.model.endpoint_type} options={[
         { value: "openai-responses", label: "OpenAI Responses", icon: openAiIcon }, { value: "openai-chat", label: "OpenAI Chat", icon: openAiIcon }, { value: "anthropic", label: "Anthropic", icon: claudeIcon },

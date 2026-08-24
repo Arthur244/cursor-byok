@@ -20,6 +20,13 @@ pub(crate) fn path(call: &ToolCall) -> Result<String> {
     string(call, field)
 }
 
+pub(crate) fn execution_path(call: &ToolCall) -> Result<Option<String>> {
+    match normalized(&call.name).as_str() {
+        "write" | "strreplace" | "editnotebook" => path(call).map(Some),
+        _ => Ok(None),
+    }
+}
+
 pub(crate) fn after_read(
     call: &ToolCall,
     result: &pb::ReadResult,

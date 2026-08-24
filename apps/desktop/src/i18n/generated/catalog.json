@@ -362,7 +362,7 @@
         {
           "file": "pages/CursorSettingsPage.tsx",
           "line": 199,
-          "column": 205
+          "column": 182
         },
         {
           "file": "pages/CursorSettingsPage.tsx",
@@ -420,7 +420,7 @@
         {
           "file": "pages/CursorSettingsPage.tsx",
           "line": 199,
-          "column": 217
+          "column": 194
         }
       ]
     },
@@ -2260,6 +2260,18 @@
         }
       ]
     },
+    "86b7355ec3bd55ef": {
+      "source": "隐藏 API Key",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "components/ui/FormControls.tsx",
+          "line": 15,
+          "column": 81
+        }
+      ]
+    },
     "8716e1344b0daddb": {
       "source": "Cursor 官方",
       "kind": "text",
@@ -4027,6 +4039,18 @@
           "file": "pages/ProvidersPage.tsx",
           "line": 64,
           "column": 46
+        }
+      ]
+    },
+    "f2bdc88464c51c2e": {
+      "source": "显示 API Key",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "components/ui/FormControls.tsx",
+          "line": 15,
+          "column": 99
         }
       ]
     },

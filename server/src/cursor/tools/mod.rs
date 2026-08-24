@@ -1,11 +1,19 @@
-use std::collections::{BTreeMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashSet},
+    sync::Arc,
+};
+
+use tokio::sync::Mutex;
 
 pub mod codec;
 mod dispatch;
 pub(crate) mod edit;
 pub(crate) mod result;
 pub mod runtime;
+mod schedule;
 pub(crate) mod stream;
+#[cfg(test)]
+mod tests;
 
 use crate::{
     model::{CanonicalMessage, MessageContent, Role, ToolCall},
@@ -14,6 +22,7 @@ use crate::{
 };
 
 use self::result::{ToolCompletion, ToolResultSender};
+use self::schedule::{DeferredEdit, EditSchedule};
 use super::{interaction, proto::agent::v1 as pb};
 use runtime::{CursorToolRuntime, ExecContext};
 
@@ -23,6 +32,7 @@ pub struct ToolDispatcher {
     results: ToolResultSender,
     search: WebSearch,
     fetch: WebFetch,
+    edit_schedule: Arc<Mutex<EditSchedule>>,
 }
 
 pub struct DispatchedTool {
@@ -54,6 +64,7 @@ impl ToolDispatcher {
             results,
             search: WebSearch::built_in(),
             fetch: WebFetch::built_in(),
+            edit_schedule: Arc::new(Mutex::new(EditSchedule::default())),
         }
     }
 
@@ -74,18 +85,60 @@ impl ToolDispatcher {
             if state.completed.contains(&call.call_id) {
                 continue;
             }
+            let message_index = first_tool_index + position;
+            let publish_started = !state.started.contains(&call.call_id);
+            let edit_path = if dynamic_mcp.contains_key(&call.name) {
+                None
+            } else {
+                edit::execution_path(call)?
+            };
+            if let Some(path) = edit_path {
+                let next = self.edit_schedule.lock().await.start_or_defer(
+                    path,
+                    DeferredEdit {
+                        call: call.clone(),
+                        message_index,
+                        publish_started,
+                        context: context.clone(),
+                    },
+                );
+                let Some(next) = next else {
+                    continue;
+                };
+                dispatched.push(
+                    self.start(
+                        &next.call,
+                        next.message_index,
+                        next.publish_started,
+                        dynamic_mcp,
+                        &next.context,
+                    )
+                    .await?,
+                );
+                continue;
+            }
             dispatched.push(
-                self.start(
-                    call,
-                    first_tool_index + position,
-                    !state.started.contains(&call.call_id),
-                    dynamic_mcp,
-                    context,
-                )
-                .await?,
+                self.start(call, message_index, publish_started, dynamic_mcp, context)
+                    .await?,
             );
         }
         Ok(dispatched)
+    }
+
+    pub(crate) async fn continue_after(&self, call_id: &str) -> Result<Option<DispatchedTool>> {
+        let next = self.edit_schedule.lock().await.complete(call_id)?;
+        let Some(next) = next else {
+            return Ok(None);
+        };
+        self.start(
+            &next.call,
+            next.message_index,
+            next.publish_started,
+            &BTreeMap::new(),
+            &next.context,
+        )
+        .await
+        .map(Some)
     }
 
     async fn start(

@@ -127,10 +127,15 @@ impl Store {
             .provider(provider_id)
             .await?
             .ok_or_else(|| Error::RunNotFound(format!("provider {provider_id}")))?;
-        let api_key = input.api_key.as_deref().unwrap_or(&current.api_key);
+        let api_key = input
+            .api_key
+            .as_deref()
+            .or(current.endpoint.api_key.as_deref())
+            .unwrap_or_default();
         let custom_headers = merge_custom_headers(&current.custom_headers, &input.custom_headers)?;
         let base_url = normalize_base_url(&input.base_url)?;
-        let identity_changed = base_url != current.endpoint.base_url || api_key != current.api_key;
+        let identity_changed = base_url != current.endpoint.base_url
+            || api_key != current.endpoint.api_key.as_deref().unwrap_or_default();
         let models = if identity_changed {
             sqlx::query("SELECT * FROM provider_models WHERE provider_id = ?")
                 .bind(provider_id)
@@ -276,7 +281,7 @@ impl Store {
         for input in inputs {
             let hash = model_hash(
                 &provider.endpoint.base_url,
-                &provider.api_key,
+                provider.endpoint.api_key.as_deref().unwrap_or_default(),
                 input.endpoint_type,
                 &input.model_id,
             )?;
@@ -333,7 +338,7 @@ impl Store {
             .expect("model provider must exist");
         let next_hash = model_hash(
             &provider.endpoint.base_url,
-            &provider.api_key,
+            provider.endpoint.api_key.as_deref().unwrap_or_default(),
             input.endpoint_type,
             &input.model_id,
         )?;
@@ -485,6 +490,7 @@ fn validate_model_batch(inputs: &[ProviderModelInput]) -> Result<()> {
 
 fn endpoint_from_row(row: sqlx::sqlite::SqliteRow) -> Result<ProviderEndpoint> {
     let api_key: String = row.try_get("api_key")?;
+    let has_api_key = !api_key.is_empty();
     let headers: serde_json::Value = serde_json::from_str(row.try_get("custom_headers_json")?)?;
     let extra_params: serde_json::Value = serde_json::from_str(row.try_get("extra_params_json")?)?;
     Ok(ProviderEndpoint {
@@ -492,7 +498,8 @@ fn endpoint_from_row(row: sqlx::sqlite::SqliteRow) -> Result<ProviderEndpoint> {
         name: row.try_get("name")?,
         provider_type: ProviderType::from_str(row.try_get("provider_type")?)?,
         base_url: row.try_get("base_url")?,
-        has_api_key: !api_key.is_empty(),
+        api_key: has_api_key.then_some(api_key),
+        has_api_key,
         custom_headers: redact_custom_headers(&headers),
         extra_params,
         created_at_ms: row.try_get("created_at_ms")?,
@@ -501,12 +508,10 @@ fn endpoint_from_row(row: sqlx::sqlite::SqliteRow) -> Result<ProviderEndpoint> {
 }
 
 fn secret_from_row(row: sqlx::sqlite::SqliteRow) -> Result<ProviderEndpointSecret> {
-    let api_key: String = row.try_get("api_key")?;
     let custom_headers: serde_json::Value =
         serde_json::from_str(row.try_get("custom_headers_json")?)?;
     Ok(ProviderEndpointSecret {
         endpoint: endpoint_from_row(row)?,
-        api_key,
         custom_headers,
     })
 }
@@ -845,6 +850,69 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(detached, None);
+    }
+
+    #[tokio::test]
+    async fn updating_provider_without_changing_api_key_preserves_model_hashes() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("provider-key-keep.db").display()
+        ))
+        .await
+        .unwrap();
+        let (created_provider, original) = store
+            .create_provider_with_model(&provider(), &model("model-a"))
+            .await
+            .unwrap();
+
+        // Editor keeps the configured key: sending it back must not rehash models.
+        store
+            .update_provider(created_provider.provider_id, &provider())
+            .await
+            .unwrap();
+        assert!(store
+            .provider_model(&original.model_hash)
+            .await
+            .unwrap()
+            .is_some());
+
+        // Editor cleared the field: keep the current key, still no rehash.
+        let mut without_key = provider();
+        without_key.api_key = None;
+        store
+            .update_provider(created_provider.provider_id, &without_key)
+            .await
+            .unwrap();
+        assert!(store
+            .provider_model(&original.model_hash)
+            .await
+            .unwrap()
+            .is_some());
+        assert_eq!(store.provider_models(false).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn providers_expose_the_configured_api_key_for_editing() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("provider-key-echo.db").display()
+        ))
+        .await
+        .unwrap();
+        let created = store.create_provider(&provider()).await.unwrap();
+        assert_eq!(created.api_key.as_deref(), Some("secret"));
+        let listed = store.providers().await.unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].api_key.as_deref(), Some("secret"));
+        assert!(listed[0].has_api_key);
+
+        let without_key = ProviderEndpointInput { api_key: None, ..provider() };
+        let empty = store.create_provider(&without_key).await.unwrap();
+        assert_eq!(empty.api_key, None);
+        assert!(!empty.has_api_key);
+        assert_eq!(store.providers().await.unwrap().len(), 2);
     }
 
     async fn insert_call(store: &Store, provider: &ProviderEndpoint, model: &ProviderModel) {

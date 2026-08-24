@@ -459,6 +459,7 @@ pub fn dynamic_mcp(
                 Error::Protocol(format!("MCP tool {} is missing input schema", wire.name))
             })?),
         };
+        let parameters = normalize_mcp_parameters(&wire.name, parameters)?;
         let name = model_tool_name(&wire.name);
         let definition = ToolDefinition {
             name: name.clone(),
@@ -475,6 +476,43 @@ pub fn dynamic_mcp(
         }
     }
     Ok(output)
+}
+
+fn normalize_mcp_parameters(tool_name: &str, mut parameters: Value) -> Result<Value> {
+    let schema = parameters
+        .as_object_mut()
+        .ok_or_else(|| invalid_mcp_parameters(tool_name))?;
+    match schema.get("type") {
+        Some(Value::String(schema_type)) if schema_type == "object" => return Ok(parameters),
+        Some(_) => return Err(invalid_mcp_parameters(tool_name)),
+        None => {}
+    }
+    let object_only_union = ["anyOf", "oneOf"].into_iter().any(|keyword| {
+        schema
+            .get(keyword)
+            .and_then(Value::as_array)
+            .is_some_and(|branches| {
+                !branches.is_empty()
+                    && branches.iter().all(|branch| {
+                        branch
+                            .as_object()
+                            .and_then(|branch| branch.get("type"))
+                            .and_then(Value::as_str)
+                            == Some("object")
+                    })
+            })
+    });
+    if !object_only_union {
+        return Err(invalid_mcp_parameters(tool_name));
+    }
+    schema.insert("type".into(), Value::String("object".into()));
+    Ok(parameters)
+}
+
+fn invalid_mcp_parameters(tool_name: &str) -> Error {
+    Error::Protocol(format!(
+        "MCP tool {tool_name} input schema must describe an object"
+    ))
 }
 
 fn model_tool_name(name: &str) -> String {
@@ -573,6 +611,115 @@ mod tests {
         assert!(error
             .to_string()
             .contains("duplicate MCP tool name after normalization: server_name-tool"));
+    }
+
+    #[test]
+    fn dynamic_mcp_normalizes_cursor_object_union_without_mutating_wire_schema() {
+        let original_schema = serde_json::json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "rootPath": { "type": "string", "minLength": 1 }
+                    },
+                    "required": ["rootPath"],
+                    "additionalProperties": false
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "rootPaths": {
+                            "type": "array",
+                            "items": { "type": "string", "minLength": 1 },
+                            "minItems": 1
+                        }
+                    },
+                    "required": ["rootPaths"],
+                    "additionalProperties": false
+                }
+            ]
+        });
+        let original_json = original_schema.to_string();
+        let mut tool = direct_mcp_tool("cursor-app-control-move_agent_to_cloned_root");
+        tool.input_schema_json = Some(original_json.clone());
+        let request = pb::AgentRunRequest {
+            mcp_tools: Some(pb::McpTools {
+                mcp_tools: vec![tool],
+            }),
+            ..Default::default()
+        };
+
+        let tools = dynamic_mcp(&request, &pb::RequestContext::default()).unwrap();
+        let (wire, definition) = tools
+            .get("cursor-app-control-move_agent_to_cloned_root")
+            .unwrap();
+
+        assert_eq!(definition.parameters["type"], "object");
+        assert_eq!(definition.parameters["anyOf"], original_schema["anyOf"]);
+        assert_eq!(
+            wire.input_schema_json.as_deref(),
+            Some(original_json.as_str())
+        );
+    }
+
+    #[test]
+    fn dynamic_mcp_preserves_valid_object_schema() {
+        let original_schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "query": { "type": "string" }
+            },
+            "required": ["query"],
+            "additionalProperties": false
+        });
+        let mut tool = direct_mcp_tool("search");
+        tool.input_schema_json = Some(original_schema.to_string());
+        let request = pb::AgentRunRequest {
+            mcp_tools: Some(pb::McpTools {
+                mcp_tools: vec![tool],
+            }),
+            ..Default::default()
+        };
+
+        let tools = dynamic_mcp(&request, &pb::RequestContext::default()).unwrap();
+        let (_, definition) = tools.get("search").unwrap();
+
+        assert_eq!(definition.parameters, original_schema);
+    }
+
+    #[test]
+    fn dynamic_mcp_rejects_schemas_that_are_not_provably_objects() {
+        let invalid_schemas = [
+            serde_json::Value::Null,
+            serde_json::json!({ "type": "string" }),
+            serde_json::json!({ "properties": { "query": { "type": "string" } } }),
+            serde_json::json!({
+                "anyOf": [
+                    { "type": "object" },
+                    { "type": "string" }
+                ]
+            }),
+        ];
+
+        for schema in invalid_schemas {
+            let mut tool = direct_mcp_tool("unsafe_schema");
+            tool.input_schema_json = Some(schema.to_string());
+            let request = pb::AgentRunRequest {
+                mcp_tools: Some(pb::McpTools {
+                    mcp_tools: vec![tool],
+                }),
+                ..Default::default()
+            };
+
+            let error = dynamic_mcp(&request, &pb::RequestContext::default()).unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("MCP tool unsafe_schema input schema must describe an object"),
+                "unexpected error for {schema}: {error}"
+            );
+        }
     }
 
     #[test]

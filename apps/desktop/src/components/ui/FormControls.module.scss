@@ -48,3 +48,31 @@
   height: 34px;
   padding: 0 10px;
 }
+
+.secret {
+  position: relative;
+  width: 100%;
+
+  input {
+    padding-right: 34px;
+  }
+}
+
+.secretToggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 30px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--vscode-foreground);
+  }
+}
