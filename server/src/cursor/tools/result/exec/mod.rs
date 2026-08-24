@@ -7,7 +7,7 @@ use crate::{
     Error, Result,
 };
 
-use super::{mcp_state, ReadImage, ToolCompletion};
+use super::{gate, mcp_state, ReadImage, ToolCompletion};
 use crate::cursor::tools::{
     edit,
     runtime::{ExecStage, PendingExec},
@@ -18,6 +18,15 @@ pub(crate) fn from_exec(
     wire_result: &pb::exec_client_message::Message,
 ) -> Result<ToolCompletion> {
     use pb::{exec_client_message::Message, tool_call::Tool};
+    let mut gated_shell = matches!(
+        wire_result,
+        Message::ShellResult(_) | Message::MiniSweAgentBashResult(_)
+    )
+    .then(|| wire_result.clone());
+    if let Some(message) = gated_shell.as_mut() {
+        gate::exec_message(message);
+    }
+    let wire_result = gated_shell.as_ref().unwrap_or(wire_result);
     if let Message::McpStateExecResult(result) = wire_result {
         return mcp_state::complete(pending, result);
     }

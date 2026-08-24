@@ -1,5 +1,6 @@
 mod await_shell;
 mod exec;
+mod gate;
 mod interaction;
 mod local;
 mod mcp;
@@ -87,9 +88,10 @@ impl ToolCompletion {
     pub(crate) fn new(
         call: &ToolCall,
         started_at_ms: u64,
-        result: ToolResult,
+        mut result: ToolResult,
         tool: pb::tool_call::Tool,
     ) -> Self {
+        gate::model_content(&tool, &mut result.content);
         Self {
             result,
             tool_call: pb::ToolCall {

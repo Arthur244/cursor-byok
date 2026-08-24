@@ -174,6 +174,7 @@ export function VirtualList<TItem>(props: VirtualListProps<TItem>) {
   const shouldResetScrollRef = useRef(false)
   const scrollApiRef = useRef<ScrollAreaApi | null>(null)
   const scrollStateRef = useRef<ScrollAreaState | null>(null)
+  const contentElementRef = useRef<HTMLDivElement | null>(null)
   const spacerRef = useRef<HTMLDivElement | null>(null)
   const [contentInsets, setContentInsets] = useState<ContentInsets>({
     top: 0,
@@ -192,7 +193,8 @@ export function VirtualList<TItem>(props: VirtualListProps<TItem>) {
   })
   const [, forceUpdate] = useState(0)
 
-  const setContentRef = useCallback((node: HTMLDivElement | null) => {
+  const readContentInsets = useCallback(() => {
+    const node = contentElementRef.current
     const styles = node ? getComputedStyle(node) : null
     const nextInsets = {
       top: styles ? Number.parseFloat(styles.paddingTop) || 0 : 0,
@@ -204,6 +206,26 @@ export function VirtualList<TItem>(props: VirtualListProps<TItem>) {
         : nextInsets
     )
   }, [])
+
+  const setContentRef = useCallback((node: HTMLDivElement | null) => {
+    contentElementRef.current = node
+    readContentInsets()
+  }, [readContentInsets])
+
+  useLayoutEffect(() => {
+    const node = contentElementRef.current
+    if (!node) return
+
+    readContentInsets()
+    const resizeObserver = new ResizeObserver(readContentInsets)
+    resizeObserver.observe(node)
+    const frame = requestAnimationFrame(readContentInsets)
+
+    return () => {
+      cancelAnimationFrame(frame)
+      resizeObserver.disconnect()
+    }
+  }, [readContentInsets])
 
   const contentInsetTop = contentInsets.top
 

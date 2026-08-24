@@ -77,7 +77,7 @@ async fn provider_secret_is_write_only_and_model_hash_is_stable() {
         )
         .await
         .unwrap();
-    assert_eq!(model.model_hash, "f246010a");
+    assert_eq!(model.model_hash, "bab5019a");
     assert!(model.supports_image_generation);
 }
 

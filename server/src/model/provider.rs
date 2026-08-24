@@ -138,7 +138,12 @@ pub fn normalize_base_url(value: &str) -> Result<String> {
     Ok(url.as_str().trim_end_matches('/').to_string())
 }
 
-pub fn model_hash(base_url: &str, provider_type: ProviderType, model_id: &str) -> Result<String> {
+pub fn model_hash(
+    base_url: &str,
+    api_key: &str,
+    provider_type: ProviderType,
+    model_id: &str,
+) -> Result<String> {
     let base_url = normalize_base_url(base_url)?;
     let model_id = model_id.trim();
     if model_id.is_empty() {
@@ -146,6 +151,8 @@ pub fn model_hash(base_url: &str, provider_type: ProviderType, model_id: &str) -
     }
     let mut digest = Sha256::new();
     digest.update(base_url.as_bytes());
+    digest.update([0]);
+    digest.update(api_key.as_bytes());
     digest.update([0]);
     digest.update(provider_type.as_str().as_bytes());
     digest.update([0]);
@@ -212,24 +219,41 @@ mod tests {
     use super::*;
 
     #[test]
-    fn hash_uses_normalized_url_type_and_model_only() {
+    fn hash_uses_normalized_url_key_type_and_model() {
         let first = model_hash(
             "HTTPS://Example.COM/v1/",
+            "secret",
             ProviderType::OpenAiChat,
             "model-a",
         )
         .unwrap();
         let second = model_hash(
             "https://example.com/v1",
+            "secret",
             ProviderType::OpenAiChat,
             "model-a",
         )
         .unwrap();
         assert_eq!(first, second);
-        assert_eq!(first, "f246010a");
         assert_ne!(
             first,
-            model_hash("https://example.com/v1", ProviderType::Anthropic, "model-a").unwrap()
+            model_hash(
+                "https://example.com/v1",
+                "different-secret",
+                ProviderType::OpenAiChat,
+                "model-a",
+            )
+            .unwrap()
+        );
+        assert_ne!(
+            first,
+            model_hash(
+                "https://example.com/v1",
+                "secret",
+                ProviderType::Anthropic,
+                "model-a",
+            )
+            .unwrap()
         );
     }
 

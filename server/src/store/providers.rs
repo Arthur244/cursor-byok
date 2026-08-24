@@ -36,7 +36,12 @@ impl Store {
         let mut hashes = Vec::with_capacity(models.len());
         let mut unique_hashes = HashSet::with_capacity(models.len());
         for model in models {
-            let hash = model_hash(&base_url, model.endpoint_type, &model.model_id)?;
+            let hash = model_hash(
+                &base_url,
+                provider.api_key.as_deref().unwrap_or_default(),
+                model.endpoint_type,
+                &model.model_id,
+            )?;
             if !unique_hashes.insert(hash.clone()) {
                 return Err(Error::Config(format!(
                     "8-character model hash collision: {hash}"
@@ -125,8 +130,8 @@ impl Store {
         let api_key = input.api_key.as_deref().unwrap_or(&current.api_key);
         let custom_headers = merge_custom_headers(&current.custom_headers, &input.custom_headers)?;
         let base_url = normalize_base_url(&input.base_url)?;
-        let base_url_changed = base_url != current.endpoint.base_url;
-        let models = if base_url_changed {
+        let identity_changed = base_url != current.endpoint.base_url || api_key != current.api_key;
+        let models = if identity_changed {
             sqlx::query("SELECT * FROM provider_models WHERE provider_id = ?")
                 .bind(provider_id)
                 .fetch_all(&self.pool)
@@ -140,7 +145,7 @@ impl Store {
         let mut next_hashes = Vec::with_capacity(models.len());
         let mut unique_hashes = HashSet::with_capacity(models.len());
         for model in &models {
-            let hash = model_hash(&base_url, model.endpoint_type, &model.model_id)?;
+            let hash = model_hash(&base_url, api_key, model.endpoint_type, &model.model_id)?;
             if !unique_hashes.insert(hash.clone()) {
                 return Err(Error::Config(format!(
                     "8-character model hash collision: {hash}"
@@ -271,6 +276,7 @@ impl Store {
         for input in inputs {
             let hash = model_hash(
                 &provider.endpoint.base_url,
+                &provider.api_key,
                 input.endpoint_type,
                 &input.model_id,
             )?;
@@ -327,6 +333,7 @@ impl Store {
             .expect("model provider must exist");
         let next_hash = model_hash(
             &provider.endpoint.base_url,
+            &provider.api_key,
             input.endpoint_type,
             &input.model_id,
         )?;
@@ -681,6 +688,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn allows_same_endpoint_and_model_with_different_api_keys() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("credential-models.db").display()
+        ))
+        .await
+        .unwrap();
+        let first_provider = provider();
+        let mut second_provider = provider();
+        second_provider.name = "Second".into();
+        second_provider.api_key = Some("different-secret".into());
+
+        let (_, first_model) = store
+            .create_provider_with_model(&first_provider, &model("model-a"))
+            .await
+            .unwrap();
+        let (_, second_model) = store
+            .create_provider_with_model(&second_provider, &model("model-a"))
+            .await
+            .unwrap();
+
+        assert_ne!(first_model.model_hash, second_model.model_hash);
+        assert_eq!(store.provider_models(false).await.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
     async fn adds_multiple_models_to_existing_provider_atomically() {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::connect(&format!(
@@ -750,6 +784,55 @@ mod tests {
             models[0].model_hash,
             model_hash(
                 &updated_provider.base_url,
+                input.api_key.as_deref().unwrap(),
+                models[0].endpoint_type,
+                &models[0].model_id,
+            )
+            .unwrap()
+        );
+        let detached: Option<String> =
+            sqlx::query_scalar("SELECT model_hash FROM llm_calls WHERE call_id = ?")
+                .bind("call-1")
+                .fetch_one(store.pool())
+                .await
+                .unwrap();
+        assert_eq!(detached, None);
+    }
+
+    #[tokio::test]
+    async fn updating_provider_api_key_rehashes_its_models() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("provider-key-update.db").display()
+        ))
+        .await
+        .unwrap();
+        let (created_provider, original) = store
+            .create_provider_with_model(&provider(), &model("model-a"))
+            .await
+            .unwrap();
+        insert_call(&store, &created_provider, &original).await;
+
+        let mut input = provider();
+        input.api_key = Some("different-secret".into());
+        store
+            .update_provider(created_provider.provider_id, &input)
+            .await
+            .unwrap();
+
+        assert!(store
+            .provider_model(&original.model_hash)
+            .await
+            .unwrap()
+            .is_none());
+        let models = store.provider_models(false).await.unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(
+            models[0].model_hash,
+            model_hash(
+                &created_provider.base_url,
+                "different-secret",
                 models[0].endpoint_type,
                 &models[0].model_id,
             )

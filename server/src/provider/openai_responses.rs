@@ -204,32 +204,6 @@ impl Provider for OpenAiResponsesProvider {
                     }
                     "response.completed" => {
                         if let Some(usage) = value.pointer("/response/usage") { yield ModelEvent::Usage(responses_usage(usage)); }
-                        if let Some(output) = value.pointer("/response/output").and_then(Value::as_array) {
-                            for (index, item) in output.iter().enumerate() {
-                                match item.get("type").and_then(Value::as_str) {
-                                    Some("reasoning") => {
-                                        if thinking_open { thinking_open = false; yield ModelEvent::ThinkingEnd; }
-                                        if !reasoning_items.iter().any(|existing| existing.get("id") == item.get("id")) {
-                                            reasoning_items.push(item.clone());
-                                        }
-                                    }
-                                    Some("message") => {
-                                        if let Some(final_text) = response_item_text(item) {
-                                            for event in reconcile_response_text(&mut text_open, &mut text, &final_text) { yield event; }
-                                        }
-                                    }
-                                    Some("function_call") => {
-                                        saw_tool = true;
-                                        let arguments = item
-                                            .get("arguments")
-                                            .and_then(Value::as_str)
-                                            .map_or(ResponseToolArguments::None, ResponseToolArguments::Snapshot);
-                                        for event in update_response_tool(index, item, arguments, true, &mut tools)? { yield event; }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
                         if thinking_open { thinking_open = false; yield ModelEvent::ThinkingEnd; }
                         if text_open { text_open = false; yield ModelEvent::TextEnd; }
                         for (index, tool) in tools.iter_mut().filter(|(_, tool)| tool.started && !tool.ended) {

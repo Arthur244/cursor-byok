@@ -149,6 +149,35 @@ async fn duplicate_usage_is_rejected_instead_of_guessing_which_total_is_final() 
 }
 
 #[tokio::test]
+async fn duplicate_tool_call_ids_are_rejected_across_distinct_indexes() {
+    let (sender, _receiver) = tokio::sync::mpsc::channel(8);
+    let failure = consume_model_cycle(
+        provider_stream(vec![
+            ModelEvent::Start {
+                model_call_id: "model-call".into(),
+            },
+            ModelEvent::ToolCallStart {
+                index: 0,
+                call_id: "call-1".into(),
+                name: "Read".into(),
+            },
+            ModelEvent::ToolCallEnd { index: 0 },
+            ModelEvent::ToolCallStart {
+                index: 1,
+                call_id: "call-1".into(),
+                name: "Read".into(),
+            },
+        ]),
+        &sender,
+        &CancellationToken::new(),
+    )
+    .await
+    .unwrap_err();
+
+    assert!(matches!(failure.failure, RunFailure::Protocol(_)));
+}
+
+#[tokio::test]
 async fn openai_chat_raw_stream_and_request_projection_match_the_endpoint() {
     let (base_url, mut requests, server) = fixture_server(
         "/v1/chat/completions",
@@ -457,12 +486,15 @@ async fn openai_responses_preserves_delta_that_repeats_the_streamed_suffix() {
 }
 
 #[tokio::test]
-async fn openai_responses_completed_object_recovers_missing_item_events() {
+async fn openai_responses_completed_snapshot_does_not_reindex_streamed_tool() {
     let (base_url, _requests, server) = fixture_server(
         "/v1/responses",
         concat!(
+            "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"reasoning\",\"id\":\"reasoning-1\",\"encrypted_content\":\"opaque\"}}\n\n",
+            "data: {\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"type\":\"function_call\",\"call_id\":\"call-1\",\"name\":\"Read\"}}\n\n",
+            "data: {\"type\":\"response.function_call_arguments.done\",\"output_index\":1,\"arguments\":\"{\\\"path\\\":\\\"a\\\"}\"}\n\n",
+            "data: {\"type\":\"response.output_item.done\",\"output_index\":1,\"item\":{\"type\":\"function_call\",\"call_id\":\"call-1\",\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"a\\\"}\"}}\n\n",
             "data: {\"type\":\"response.completed\",\"response\":{\"output\":[",
-            "{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}]},",
             "{\"type\":\"function_call\",\"call_id\":\"call-1\",\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\\\"a\\\"}\"}",
             "]}}\n\n",
         ),
@@ -472,18 +504,21 @@ async fn openai_responses_completed_object_recovers_missing_item_events() {
         reqwest::Client::new(),
         config(ProviderKind::OpenAiResponses, base_url, None),
     );
+    let (sender, _receiver) = tokio::sync::mpsc::channel(32);
 
-    let events = collect(provider.stream(invocation(), CancellationToken::new())).await;
+    let cycle = consume_model_cycle(
+        provider.stream(invocation(), CancellationToken::new()),
+        &sender,
+        &CancellationToken::new(),
+    )
+    .await
+    .unwrap();
     server.abort();
 
-    assert!(events
-        .iter()
-        .any(|event| matches!(event, ModelEvent::TextDelta(text) if text == "ok")));
-    assert!(events.iter().any(|event| matches!(event, ModelEvent::ToolCallStart { call_id, name, .. } if call_id == "call-1" && name == "Read")));
-    assert_eq!(
-        events.last(),
-        Some(&ModelEvent::Done(FinishReason::ToolUse))
-    );
+    assert_eq!(cycle.calls.len(), 1);
+    assert_eq!(cycle.calls[0].index, 1);
+    assert_eq!(cycle.calls[0].call_id, "call-1");
+    assert_eq!(cycle.calls[0].arguments["path"], "a");
 }
 
 #[tokio::test]

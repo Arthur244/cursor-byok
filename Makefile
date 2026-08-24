@@ -1,3 +1,5 @@
+LOCAL_TAURI_SIGNING_KEY := $(CURDIR)/.tauri/cursor-byok.local.key
+
 .PHONY: check dev-web dev-server dev-desktop build-web build-server build-desktop build-docker
 
 check:
@@ -21,8 +23,13 @@ build-web:
 build-server:
 	cargo build --release --package cursor-server --bin cursor-server
 
-build-desktop:
-	npm --prefix apps/desktop run tauri:build
+$(LOCAL_TAURI_SIGNING_KEY):
+	@install -d -m 700 "$(dir $@)"
+	@apps/desktop/node_modules/.bin/tauri signer generate --ci --write-keys "$@" >/dev/null
+	@chmod 600 "$@" "$@.pub"
+
+build-desktop: $(LOCAL_TAURI_SIGNING_KEY)
+	TAURI_SIGNING_PRIVATE_KEY="$(LOCAL_TAURI_SIGNING_KEY)" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="" npm --prefix apps/desktop run tauri:build
 
 build-docker:
 	docker build --tag cursor-byok:local .
