@@ -119,7 +119,6 @@ impl Provider for OpenAiResponsesProvider {
             let mut reasoning_items = Vec::new();
             let mut saw_tool = false;
             let mut saw_completed_item = false;
-            let mut saw_done_marker = false;
             let mut terminal = false;
             loop {
                 let event = tokio::select! {
@@ -128,7 +127,7 @@ impl Provider for OpenAiResponsesProvider {
                 };
                 let Some(event) = event else { break };
                 let event = event.map_err(|error| Error::Provider(format!("OpenAI Responses SSE: {error}")))?;
-                if event.data == "[DONE]" { saw_done_marker = true; break; }
+                if event.data == "[DONE]" { break; }
                 let value: Value = serde_json::from_str(&event.data)?;
                 let kind = value.get("type").and_then(Value::as_str).unwrap_or(&event.event);
                 match kind {
@@ -163,19 +162,20 @@ impl Provider for OpenAiResponsesProvider {
                     }
                     "response.output_item.done" => {
                         let item = value.get("item").unwrap_or(&Value::Null);
-                        saw_completed_item = true;
                         match item.get("type").and_then(Value::as_str) {
                             Some("reasoning") => {
                                 if thinking_open { thinking_open = false; yield ModelEvent::ThinkingEnd; }
                                 reasoning_items.push(item.clone());
                             }
                             Some("message") => {
+                                saw_completed_item = true;
                                 if let Some(final_text) = response_item_text(item) {
                                     for event in reconcile_response_text(&mut text_open, &mut text, &final_text) { yield event; }
                                 }
                                 if text_open { text_open = false; yield ModelEvent::TextEnd; }
                             }
                             Some("function_call") => {
+                                saw_completed_item = true;
                                 let index = required_u64(&value, "output_index")? as usize;
                                 saw_tool = true;
                                 let arguments = item
@@ -196,11 +196,24 @@ impl Provider for OpenAiResponsesProvider {
                     }
                     "response.function_call_arguments.done" => {
                         let index = required_u64(&value, "output_index")? as usize;
-                        let arguments = value
-                            .get("arguments")
-                            .and_then(Value::as_str)
-                            .map_or(ResponseToolArguments::None, ResponseToolArguments::Snapshot);
-                        for event in update_response_tool(index, &Value::Null, arguments, true, &mut tools)? { yield event; }
+                        match value.get("arguments").and_then(Value::as_str) {
+                            Some("") => {
+                                for event in update_response_tool(
+                                    index,
+                                    &Value::Null,
+                                    ResponseToolArguments::None,
+                                    false,
+                                    &mut tools,
+                                )? { yield event; }
+                            }
+                            arguments => {
+                                let arguments = arguments.map_or(
+                                    ResponseToolArguments::None,
+                                    ResponseToolArguments::Snapshot,
+                                );
+                                for event in update_response_tool(index, &Value::Null, arguments, true, &mut tools)? { yield event; }
+                            }
+                        }
                     }
                     "response.completed" => {
                         if let Some(usage) = value.pointer("/response/usage") { yield ModelEvent::Usage(responses_usage(usage)); }
@@ -238,11 +251,11 @@ impl Provider for OpenAiResponsesProvider {
                     _ => {}
                 }
             }
-            if !terminal && saw_done_marker && saw_completed_item {
+            if !terminal && saw_completed_item {
                 if thinking_open { yield ModelEvent::ThinkingEnd; }
                 if text_open { yield ModelEvent::TextEnd; }
                 if tools.values().any(|tool| !tool.ended) {
-                    Err(Error::Provider("OpenAI Responses [DONE] arrived with an incomplete tool call".into()))?;
+                    Err(Error::Provider("OpenAI Responses stream ended with an incomplete tool call".into()))?;
                 }
                 terminal = true;
                 if !reasoning_items.is_empty() {

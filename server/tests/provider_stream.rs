@@ -486,6 +486,40 @@ async fn openai_responses_preserves_delta_that_repeats_the_streamed_suffix() {
 }
 
 #[tokio::test]
+async fn openai_responses_accepts_empty_arguments_done_and_eof_after_completed_tool() {
+    let arguments =
+        r#"{"merge":false,"todos":[{"id":"first","content":"First","status":"pending"}]}"#;
+    let stream = format!(
+        concat!(
+            "data: {{\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{{\"type\":\"function_call\",\"call_id\":\"call-1\",\"name\":\"TodoWrite\"}}}}\n\n",
+            "data: {{\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"delta\":{0:?}}}\n\n",
+            "data: {{\"type\":\"response.function_call_arguments.done\",\"output_index\":0,\"arguments\":\"\"}}\n\n",
+            "data: {{\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{{\"type\":\"function_call\",\"call_id\":\"call-1\",\"name\":\"TodoWrite\",\"arguments\":{0:?}}}}}\n\n",
+        ),
+        arguments,
+    );
+    let stream = Box::leak(stream.into_boxed_str());
+    let (base_url, _requests, server) = fixture_server("/v1/responses", stream).await;
+    let provider = OpenAiResponsesProvider::new(
+        reqwest::Client::new(),
+        config(ProviderKind::OpenAiResponses, base_url, None),
+    );
+    let (sender, _receiver) = tokio::sync::mpsc::channel(32);
+
+    let cycle = consume_model_cycle(
+        provider.stream(invocation(), CancellationToken::new()),
+        &sender,
+        &CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+    server.abort();
+
+    assert_eq!(cycle.calls[0].name, "TodoWrite");
+    assert_eq!(cycle.calls[0].arguments["todos"][0]["content"], "First");
+}
+
+#[tokio::test]
 async fn openai_responses_completed_snapshot_does_not_reindex_streamed_tool() {
     let (base_url, _requests, server) = fixture_server(
         "/v1/responses",
