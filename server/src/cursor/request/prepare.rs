@@ -274,20 +274,7 @@ pub(crate) async fn prepare(
         };
         RunAction::Resume { pending_tool_round }
     };
-    let kind = match (request.subagent_type_name.as_deref(), parent) {
-        (None, _) => RunKind::Root,
-        (Some(name), Some((parent_run_id, parent_tool_call_id))) => RunKind::Subagent {
-            parent_run_id,
-            parent_tool_call_id,
-            kind: model::subagent_kind(name),
-            background: false,
-        },
-        (Some(_), None) => {
-            return Err(Error::Protocol(
-                "subagent Run is missing its parent Run and tool call".into(),
-            ));
-        }
-    };
+    let kind = run_kind(request.subagent_type_name.as_deref(), parent)?;
     let exec = exec_context(
         request,
         &request_context,
@@ -320,6 +307,21 @@ pub(crate) async fn prepare(
             compacting,
         },
     ))
+}
+
+fn run_kind(subagent_type_name: Option<&str>, parent: Option<(RunId, String)>) -> Result<RunKind> {
+    match (subagent_type_name, parent) {
+        (None | Some("side-chat"), _) => Ok(RunKind::Root),
+        (Some(name), Some((parent_run_id, parent_tool_call_id))) => Ok(RunKind::Subagent {
+            parent_run_id,
+            parent_tool_call_id,
+            kind: model::subagent_kind(name),
+            background: false,
+        }),
+        (Some(_), None) => Err(Error::Protocol(
+            "subagent Run is missing its parent Run and tool call".into(),
+        )),
+    }
 }
 
 fn validate_prompt_root(messages: &[CanonicalMessage]) -> Result<()> {
@@ -577,6 +579,23 @@ mod tests {
         );
         assert!(mode_from_proto(pb::AgentMode::Project as i32).is_err());
         assert!(mode_from_proto(99).is_err());
+    }
+
+    #[test]
+    fn side_chat_without_task_parent_is_an_independent_root_run() {
+        assert!(matches!(
+            run_kind(Some("side-chat"), None).unwrap(),
+            RunKind::Root
+        ));
+    }
+
+    #[test]
+    fn task_subagent_without_parent_is_still_rejected() {
+        assert!(matches!(
+            run_kind(Some("explore"), None),
+            Err(Error::Protocol(message))
+                if message == "subagent Run is missing its parent Run and tool call"
+        ));
     }
 
     #[test]
