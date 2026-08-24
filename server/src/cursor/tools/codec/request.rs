@@ -49,6 +49,7 @@ pub fn request(id: u32, call: &ToolCall, context: &ExecContext) -> Result<pb::Ag
                 "request_smart_mode_approval",
                 "smart_mode_block_reason",
             )?,
+            requested_sandbox_policy: shell_sandbox_policy(call),
             close_stdin: true,
             conversation_id: Some(context.conversation_id.clone()),
             admin_command_denylist: context.admin_command_denylist.clone(),
@@ -362,6 +363,29 @@ pub fn abort(id: u32) -> pb::AgentServerMessage {
                 )),
             },
         )),
+    }
+}
+
+fn shell_sandbox_policy(call: &ToolCall) -> Option<pb::SandboxPolicy> {
+    let permissions = call.arguments.get("required_permissions")?.as_array()?;
+    let perms: Vec<&str> = permissions
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    if perms.contains(&"all") {
+        Some(pb::SandboxPolicy {
+            r#type: pb::sandbox_policy::Type::InsecureNone as i32,
+            network_access: Some(true),
+            ..Default::default()
+        })
+    } else if perms.contains(&"full_network") {
+        Some(pb::SandboxPolicy {
+            r#type: pb::sandbox_policy::Type::WorkspaceReadwrite as i32,
+            network_access: Some(true),
+            ..Default::default()
+        })
+    } else {
+        None
     }
 }
 

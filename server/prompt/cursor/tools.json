@@ -580,7 +580,7 @@
       "type": "function",
       "function": {
         "name": "Shell",
-        "description": "Executes a given command in a shell session, waiting for output for `block_until_ms` millis.\nYou can monitor commands by configuring `notify_on_output`. You will be notified at the end of your turn whenever stdout/stderr output matches the regex `pattern`. Output redirected only to a file will not trigger it. Configure a 5-or-fewer-word `reason` explaining what you are watching for, and optionally configure `debounce_ms`.",
+        "description": "Executes a given command in a shell session with optional foreground timeout.\n\nIMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files, sleeping) - use the specialized tools for this instead.\n\nYou can monitor commands by configuring `notify_on_output`. You will be notified at the end of your turn whenever stdout/stderr output matches the regex `pattern`. Output redirected only to a file will not trigger it. Configure a 5-or-fewer-word `reason` explaining what you are watching for, and optionally configure `debounce_ms`.\n\n<sandboxing>\nBy default, your commands will run in a sandbox. The sandbox allows most writes to the workspace and reads to the rest of the filesystem. Some other syscalls are also disallowed like access to USB devices.\n\nThe sandbox includes network access for common package managers and version control providers (e.g. npm, pypi, crates.io, Maven Central, GitHub, etc.). Standard operations like package installs and fetching dependencies will work without requesting additional permissions.\n\nFor broader network access beyond the allowed domains, you may still need to request 'full_network' permissions.\n\nThe required_permissions argument is used to request additional permissions. If you know you will need a permission, request it. Requesting permissions will slow down the command execution as it will ask the user for approval. Do not hesitate to request permissions if you are certain you need them. For commands you know will need unrestricted network access, request the full_network permission rather than waiting for the command to fail and asking for it later.\n\nThe following permissions are supported:\n\n- full_network: Grants unrestricted network access. This is useful for any commands that need to contact the outside internet, outside of the allowed domains.\n- all: Disables the sandbox entirely. If all is requested the command will run outside of the sandbox.\n\nIf you think a command failed due to sandbox restrictions, run the command again with the required_permissions argument to request what you need.\n</sandboxing>",
         "parameters": {
           "type": "object",
           "properties": {
@@ -629,6 +629,14 @@
             "working_directory": {
               "description": "The absolute path to the working directory to execute the command in (defaults to current directory)",
               "type": "string"
+            },
+            "required_permissions": {
+              "description": "Optional list of permissions to request if the command needs them. Use \"full_network\" for unrestricted network access beyond the sandbox allowlist, or \"all\" to disable the sandbox entirely.",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["full_network", "all"]
+              }
             }
           },
           "required": [
