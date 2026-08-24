@@ -14,7 +14,7 @@ use crate::{
         proxy::{self, CursorProxy},
         CursorSessionRegistry,
     },
-    model::ProviderModel,
+    model::{format_token_count, parse_token_count, ProviderModel},
     Error, Result,
 };
 
@@ -214,32 +214,12 @@ fn context_options(model: &ProviderModel) -> Vec<(String, String)> {
         let value = tokens.to_string();
         let duplicate = contexts
             .iter()
-            .any(|(existing, _)| parse_context_tokens(existing) == Some(tokens));
+            .any(|(existing, _)| parse_token_count(existing) == Some(tokens));
         if !duplicate {
             contexts.push((value, format!("{} (Custom)", format_token_count(tokens))));
         }
     }
     contexts
-}
-
-fn parse_context_tokens(value: &str) -> Option<u64> {
-    let value = value.trim().to_ascii_lowercase();
-    let (number, multiplier) = match value.chars().last()? {
-        'k' => (&value[..value.len() - 1], 1_000),
-        'm' => (&value[..value.len() - 1], 1_000_000),
-        _ => (value.as_str(), 1),
-    };
-    number.parse::<u64>().ok()?.checked_mul(multiplier)
-}
-
-fn format_token_count(tokens: u64) -> String {
-    if tokens >= 1_000_000 && tokens.is_multiple_of(1_000_000) {
-        format!("{}M", tokens / 1_000_000)
-    } else if tokens >= 1_000 && tokens.is_multiple_of(1_000) {
-        format!("{}K", tokens / 1_000)
-    } else {
-        tokens.to_string()
-    }
 }
 
 pub async fn available_models(

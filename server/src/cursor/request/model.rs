@@ -1,6 +1,9 @@
 use crate::{
     cursor::proto::agent::v1 as pb,
-    model::{ModelLatency, ModelSpec, ReasoningSpec, SubagentKind, SubagentModelOverride},
+    model::{
+        parse_token_count, ModelLatency, ModelSpec, ReasoningSpec, SubagentKind,
+        SubagentModelOverride,
+    },
     Error, Result,
 };
 
@@ -134,16 +137,6 @@ fn parse_bool(parameter: &pb::requested_model::ModelParameterValue) -> Result<bo
             parameter.id, parameter.value
         ))),
     }
-}
-
-fn parse_token_count(value: &str) -> Option<u64> {
-    let value = value.trim().to_ascii_lowercase();
-    let (number, multiplier) = match value.chars().last()? {
-        'k' => (&value[..value.len() - 1], 1_000),
-        'm' => (&value[..value.len() - 1], 1_000_000),
-        _ => (value.as_str(), 1),
-    };
-    number.parse::<u64>().ok()?.checked_mul(multiplier)
 }
 
 #[cfg(test)]
