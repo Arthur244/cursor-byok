@@ -78,10 +78,13 @@ export function CursorModelEditor({ draft, providers, editing, modelOptions, dis
         { value: "openai-responses", label: "OpenAI Responses", icon: openAiIcon }, { value: "openai-chat", label: "OpenAI Chat", icon: openAiIcon }, { value: "anthropic", label: "Anthropic", icon: claudeIcon },
       ]} onChange={(endpointType) => setEndpointType(endpointType as ProviderType)} /></FormField>
       {(editing || draft.modelIds.length <= 1) && <FormField label={t("显示名称")} hint={t("仅用于界面展示，不会改变发送给上游的模型名称。")}><TextInput placeholder="例如：GPT-4.1" value={draft.model.display_name} onChange={(event) => setModel({ display_name: event.target.value })} /></FormField>}
-      <FormField className={styles.fullWidth} label={t("模型名称")} hint={editing ? t("可以直接输入模型标识，也可以从当前上游返回的模型列表中选择。") : t("支持选择或输入多个模型；批量添加时显示名称默认使用对应模型名称。")}>{editing
+      <FormField label={t("模型名称")} hint={editing ? t("可以直接输入模型标识，也可以从当前上游返回的模型列表中选择。") : t("支持选择或输入多个模型；批量添加时显示名称默认使用对应模型名称。")}>{editing
         ? <Combobox value={draft.model.model_id} options={modelOptions} placeholder="例如：gpt-4.1" append={<button type="button" className={controls.secondary} disabled={discovering || !canDiscover} onClick={onDiscover}>{discovering ? t("获取中…") : t("获取模型")}</button>} onChange={(model_id) => setModel({ model_id, display_name: draft.model.display_name || model_id })} />
         : <MultiCombobox value={draft.modelIds} options={modelOptions} placeholder="例如：gpt-4.1" append={<button type="button" className={controls.secondary} disabled={discovering || !canDiscover} onClick={onDiscover}>{discovering ? t("获取中…") : t("获取模型")}</button>} onChange={setModelIds} />
       }</FormField>
+      <FormField label={t("自定义上下文")} hint={t("输入 token 数后，将作为额外选项添加到 Cursor 模型的 Context 列表；只有在 Cursor 中选中该选项时才会生效。")}>
+        <TextInput type="number" min={1} step={1} aria-label={t("自定义上下文 tokens")} placeholder={t("例如：272000")} value={draft.model.context_window_tokens ?? ""} onChange={(event) => setModel({ context_window_tokens: event.target.value === "" ? null : Math.trunc(Number(event.target.value)) })} />
+      </FormField>
       <div className={styles.fullWidth}><Checkbox label={t("自定义请求完整地址")} checked={draft.customRequestUrl} onChange={(customRequestUrl) => onChange({ ...draft, customRequestUrl, model: { ...draft.model, request_url: customRequestUrl ? draft.model.request_url : "" } })} /></div>
       {draft.customRequestUrl && <FormField className={styles.fullWidth} label={t("请求完整地址")} hint={t("支持完整 HTTP(S) 地址或以 / 开头、与上游地址组合的相对路径。")}><TextInput placeholder="例如：https://api.example.com/v1/chat/completions" value={draft.model.request_url} onChange={(event) => setModel({ request_url: event.target.value })} /></FormField>}
       {!editing && draft.providerMode === "new" && <>

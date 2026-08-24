@@ -9,6 +9,7 @@ mod projection;
 mod provider;
 mod run;
 mod runtime_tag;
+mod token_count;
 mod tool;
 mod usage;
 
@@ -23,5 +24,6 @@ pub use projection::*;
 pub use provider::*;
 pub use run::*;
 pub use runtime_tag::*;
+pub(crate) use token_count::*;
 pub use tool::*;
 pub use usage::*;

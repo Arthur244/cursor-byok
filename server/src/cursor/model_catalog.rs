@@ -14,7 +14,7 @@ use crate::{
         proxy::{self, CursorProxy},
         CursorSessionRegistry,
     },
-    model::ProviderModel,
+    model::{format_token_count, parse_token_count, ProviderModel},
     Error, Result,
 };
 
@@ -205,6 +205,23 @@ const EFFORTS: [(&str, &str); 5] = [
 ];
 const DEFAULT_CONTEXT: &str = "200k";
 
+fn context_options(model: &ProviderModel) -> Vec<(String, String)> {
+    let mut contexts = CONTEXTS
+        .into_iter()
+        .map(|(value, display_name)| (value.to_owned(), display_name.to_owned()))
+        .collect::<Vec<_>>();
+    if let Some(tokens) = model.context_window_tokens {
+        let value = tokens.to_string();
+        let duplicate = contexts
+            .iter()
+            .any(|(existing, _)| parse_token_count(existing) == Some(tokens));
+        if !duplicate {
+            contexts.push((value, format!("{} (Custom)", format_token_count(tokens))));
+        }
+    }
+    contexts
+}
+
 pub async fn available_models(
     State(registry): State<CursorSessionRegistry>,
     Extension(proxy): Extension<CursorProxy>,
@@ -324,7 +341,8 @@ fn unary_payload(body: &Bytes) -> Result<(bool, &[u8])> {
 }
 
 fn available_model(model: &ProviderModel, provider_name: &str) -> AvailableModel {
-    let variants = model_variants(model);
+    let contexts = context_options(model);
+    let variants = model_variants(model, &contexts);
     let legacy_slugs = variants
         .iter()
         .filter_map(|variant| variant.legacy_slug.clone())
@@ -348,7 +366,7 @@ fn available_model(model: &ProviderModel, provider_name: &str) -> AvailableModel
         inputbox_short_model_name: Some(model.display_name.clone()),
         supports_sandboxing: Some(true),
         supports_cmd_k: Some(false),
-        parameter_definitions: model_parameters(),
+        parameter_definitions: model_parameters(&contexts),
         variants,
         legacy_slugs,
         named_model_section_index: Some(1),
@@ -365,7 +383,7 @@ fn available_model(model: &ProviderModel, provider_name: &str) -> AvailableModel
     }
 }
 
-fn model_parameters() -> Vec<ModelParameterDefinition> {
+fn model_parameters(contexts: &[(String, String)]) -> Vec<ModelParameterDefinition> {
     vec![
         ModelParameterDefinition {
             id: "context".into(),
@@ -374,11 +392,11 @@ fn model_parameters() -> Vec<ModelParameterDefinition> {
             parameter_type: Some(ModelParameterType {
                 boolean_parameter: None,
                 enum_parameter: Some(EnumParameter {
-                    values: CONTEXTS
-                        .into_iter()
+                    values: contexts
+                        .iter()
                         .map(|(value, display_name)| EnumParameterValue {
-                            value: value.into(),
-                            display_name: Some(display_name.into()),
+                            value: value.clone(),
+                            display_name: Some(display_name.clone()),
                         })
                         .collect(),
                 }),
@@ -429,9 +447,9 @@ fn model_parameters() -> Vec<ModelParameterDefinition> {
     ]
 }
 
-fn model_variants(model: &ProviderModel) -> Vec<ModelVariant> {
-    let mut variants = Vec::with_capacity(CONTEXTS.len() * EFFORTS.len() * 2);
-    for (context, context_name) in CONTEXTS {
+fn model_variants(model: &ProviderModel, contexts: &[(String, String)]) -> Vec<ModelVariant> {
+    let mut variants = Vec::with_capacity(contexts.len() * EFFORTS.len() * 2);
+    for (context, context_name) in contexts {
         for (effort, effort_name) in EFFORTS {
             for fast in [false, true] {
                 variants.push(model_variant(
@@ -546,7 +564,7 @@ mod tests {
             request_url: String::new(),
             enabled: true,
             sort_order: 0,
-            context_window_tokens: Some(200_000),
+            context_window_tokens: Some(272_000),
             max_output_tokens: None,
             reasoning_enabled: false,
             reasoning_effort: None,
@@ -591,7 +609,22 @@ mod tests {
             .iter()
             .map(|value| value.value.as_str())
             .collect::<Vec<_>>();
-        assert_eq!(context_values, ["200k", "356k", "800k", "1m"]);
+        assert_eq!(context_values, ["200k", "356k", "800k", "1m", "272000"]);
+        let custom_context = context
+            .parameter_type
+            .as_ref()
+            .unwrap()
+            .enum_parameter
+            .as_ref()
+            .unwrap()
+            .values
+            .iter()
+            .find(|value| value.value == "272000")
+            .unwrap();
+        assert_eq!(
+            custom_context.display_name.as_deref(),
+            Some("272K (Custom)")
+        );
         let effort = mapped
             .parameter_definitions
             .iter()
@@ -607,8 +640,8 @@ mod tests {
             .values
             .iter()
             .any(|value| value.value == "max"));
-        assert_eq!(mapped.variants.len(), 40);
-        assert_eq!(mapped.legacy_slugs.len(), 40);
+        assert_eq!(mapped.variants.len(), 50);
+        assert_eq!(mapped.legacy_slugs.len(), 50);
         assert_eq!(mapped.model_picker_badges.len(), 1);
         assert_eq!(mapped.model_picker_badges[0].label, "OpenRouter");
         assert!(!mapped.model_picker_badges[0].dismiss_on_selection);

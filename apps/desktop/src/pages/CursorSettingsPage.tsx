@@ -55,7 +55,7 @@ export function CursorSettingsPage() {
     next.model = {
       model_id: model.model_id, display_name: model.display_name, enabled: model.enabled, sort_order: model.sort_order,
       endpoint_type: model.endpoint_type, request_url: model.request_url,
-      context_window_tokens: null, max_output_tokens: null,
+      context_window_tokens: model.context_window_tokens, max_output_tokens: null,
       reasoning_enabled: model.reasoning_enabled, reasoning_effort: null,
       supports_image_generation: model.supports_image_generation,
     };
@@ -235,6 +235,7 @@ function cursorModelInputs(draft: CursorModelDraft, editing: boolean) {
   if (!modelIds.length) throw new Error(t("请至少选择或输入一个模型"));
   if (editing && !draft.model.display_name.trim()) throw new Error(t("Model ID 和显示名称不能为空"));
   if (draft.customRequestUrl && !draft.model.request_url.trim()) throw new Error(t("请求完整地址不能为空"));
+  if (draft.model.context_window_tokens !== null && (!Number.isSafeInteger(draft.model.context_window_tokens) || draft.model.context_window_tokens <= 0)) throw new Error(t("自定义上下文必须是大于 0 的整数"));
   return modelIds.map((modelId, index) => ({
     ...draft.model,
     model_id: modelId,
