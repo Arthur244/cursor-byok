@@ -169,6 +169,13 @@ fn text(value: &Value, name: &str) -> String {
         .into()
 }
 
+fn normalized(name: &str) -> String {
+    name.chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -202,11 +209,4 @@ mod tests {
             })) if error == SUBAGENTS_DISABLED_REMINDER
         ));
     }
-}
-
-fn normalized(name: &str) -> String {
-    name.chars()
-        .filter(|character| character.is_ascii_alphanumeric())
-        .flat_map(char::to_lowercase)
-        .collect()
 }

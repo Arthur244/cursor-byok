@@ -16,10 +16,7 @@ use cursor_server::{
 #[test]
 fn task_keeps_wire_type_model_parent_and_background_fields() {
     let mut context = context();
-    context.subagent_models.insert(
-        "cursor-guide".into(),
-        SubagentModel::Model("guide-model".into()),
-    );
+    context.subagent_model = Some(SubagentModel::Model("guide-model".into()));
     let call = task_call(serde_json::json!({
         "description": "guide",
         "prompt": "inspect",
@@ -105,9 +102,7 @@ fn task_renders_general_typed_and_custom_subagent_types_without_aliases() {
 #[test]
 fn disabled_task_model_is_left_for_the_model_visible_reminder() {
     let mut context = context();
-    context
-        .subagent_models
-        .insert("security-review".into(), SubagentModel::Disabled);
+    context.subagent_model = Some(SubagentModel::Disabled);
     let call = task_call(serde_json::json!({
         "description": "review",
         "prompt": "inspect",
@@ -192,7 +187,7 @@ fn context() -> ExecContext {
         conversation_id: "child".into(),
         root_conversation_id: "root".into(),
         default_subagent_model: "parent-model".into(),
-        subagent_models: HashMap::new(),
+        subagent_model: None,
         allow_subagents: true,
         subagents_disabled: false,
         terminals_folder: "/tmp/terminals".into(),

@@ -695,7 +695,7 @@ fn estimate_output_tokens(output: &str) -> u64 {
     } else if output.is_empty() {
         0
     } else {
-        ((output.chars().count() as u64) + 3) / 4
+        (output.chars().count() as u64).div_ceil(4)
     }
 }
 

@@ -3,7 +3,7 @@ claude-server.tar
 dist
 .task
 /local-docs/
-bin
+/bin/
 logs/
 cursor-server.db
 cursor-server.db-shm

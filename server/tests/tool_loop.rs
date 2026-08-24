@@ -42,7 +42,7 @@ fn exec_context() -> ExecContext {
         conversation_id: "conversation".into(),
         root_conversation_id: "conversation".into(),
         default_subagent_model: "model".into(),
-        subagent_models: std::collections::HashMap::new(),
+        subagent_model: None,
         terminals_folder: "/tmp/terminals".into(),
         admin_command_denylist: Vec::new(),
         allow_subagents: true,
