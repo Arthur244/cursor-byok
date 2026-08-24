@@ -119,14 +119,95 @@ fn delete(value: &pb::DeleteResult) -> Result<(String, bool)> {
 fn grep(value: &pb::GrepResult) -> Result<(String, bool)> {
     use pb::grep_result::Result as R;
     match value.result.as_ref().ok_or_else(|| missing("grep"))? {
-        R::Success(value) => Ok((
-            format!(
-                "grep success pattern={} mode={}",
-                value.pattern, value.output_mode
-            ),
-            false,
-        )),
+        R::Success(value) => Ok((grep_success(value), false)),
         R::Error(value) => Ok((value.error.clone(), true)),
+    }
+}
+
+fn grep_success(value: &pb::GrepSuccess) -> String {
+    let mut lines = Vec::new();
+    if let Some(result) = &value.active_editor_result {
+        grep_union(result, &mut lines);
+    }
+    let mut workspaces = value.workspace_results.iter().collect::<Vec<_>>();
+    workspaces.sort_unstable_by_key(|(name, _)| *name);
+    for (_, result) in workspaces {
+        grep_union(result, &mut lines);
+    }
+    if lines.is_empty() {
+        format!(
+            "No matches found for pattern `{}` in {}",
+            value.pattern, value.path
+        )
+    } else {
+        lines.join("\n")
+    }
+}
+
+fn grep_union(value: &pb::GrepUnionResult, lines: &mut Vec<String>) {
+    use pb::grep_union_result::Result as R;
+    match value.result.as_ref() {
+        Some(R::Files(value)) => {
+            lines.extend(value.files.iter().cloned());
+            grep_truncation(
+                value.client_truncated,
+                value.ripgrep_truncated,
+                value.total_files,
+                "files",
+                lines,
+            );
+        }
+        Some(R::Count(value)) => {
+            lines.extend(
+                value
+                    .counts
+                    .iter()
+                    .map(|count| format!("{}:{}", count.file, count.count)),
+            );
+            grep_truncation(
+                value.client_truncated,
+                value.ripgrep_truncated,
+                value.total_matches,
+                "matches",
+                lines,
+            );
+        }
+        Some(R::Content(value)) => {
+            for file in &value.matches {
+                lines.extend(file.matches.iter().map(|matched| {
+                    let separator = if matched.is_context_line { '-' } else { ':' };
+                    let truncated = if matched.content_truncated {
+                        " [line truncated]"
+                    } else {
+                        ""
+                    };
+                    format!(
+                        "{}{separator}{}{separator}{}{truncated}",
+                        file.file, matched.line_number, matched.content
+                    )
+                }));
+            }
+            grep_truncation(
+                value.client_truncated,
+                value.ripgrep_truncated,
+                value.total_matched_lines,
+                "matched lines",
+                lines,
+            );
+        }
+        None => {}
+    }
+}
+
+fn grep_truncation(
+    client_truncated: bool,
+    ripgrep_truncated: bool,
+    total: i32,
+    unit: &str,
+    lines: &mut Vec<String>,
+) {
+    if client_truncated || ripgrep_truncated {
+        lines.push(format!("[Results truncated; {total} total {unit}]"));
     }
 }
 
@@ -137,17 +218,81 @@ fn diagnostics(value: &pb::DiagnosticsResult) -> Result<(String, bool)> {
         .as_ref()
         .ok_or_else(|| missing("diagnostics"))?
     {
-        R::Success(value) => Ok((
-            format!(
-                "diagnostics path={} count={}",
-                value.path, value.total_diagnostics
-            ),
-            false,
-        )),
+        R::Success(value) => Ok((diagnostics_success(value), false)),
         R::Error(value) => Ok((value.error.clone(), true)),
         R::Rejected(value) => Ok((value.reason.clone(), true)),
         R::FileNotFound(value) => Ok((format!("file not found: {}", value.path), true)),
         R::PermissionDenied(value) => Ok((format!("permission denied: {}", value.path), true)),
+    }
+}
+
+fn diagnostics_success(value: &pb::DiagnosticsSuccess) -> String {
+    if value.diagnostics.is_empty() {
+        return format!("No diagnostics found in {}", value.path);
+    }
+    let mut lines = value
+        .diagnostics
+        .iter()
+        .map(|diagnostic| {
+            let location = diagnostic_location(&value.path, diagnostic.range.as_ref());
+            let mut labels = vec![diagnostic_severity(diagnostic.severity)];
+            if !diagnostic.source.is_empty() {
+                labels.push(diagnostic.source.as_str());
+            }
+            if !diagnostic.code.is_empty() {
+                labels.push(diagnostic.code.as_str());
+            }
+            if diagnostic.is_stale {
+                labels.push("stale");
+            }
+            format!(
+                "{}: [{}] {}",
+                location,
+                labels.join(" "),
+                diagnostic.message
+            )
+        })
+        .collect::<Vec<_>>();
+    if value.total_diagnostics != value.diagnostics.len() as i32 {
+        lines.push(format!(
+            "[Reported {} diagnostics; received {} details]",
+            value.total_diagnostics,
+            value.diagnostics.len()
+        ));
+    }
+    lines.join("\n")
+}
+
+fn diagnostic_location(path: &str, range: Option<&pb::Range>) -> String {
+    let Some(range) = range else {
+        return path.into();
+    };
+    let Some(start) = &range.start else {
+        return path.into();
+    };
+    let mut location = format!(
+        "{}:{}:{}",
+        path,
+        start.line.saturating_add(1),
+        start.column.saturating_add(1)
+    );
+    if let Some(end) = &range.end {
+        location.push_str(&format!(
+            "-{}:{}",
+            end.line.saturating_add(1),
+            end.column.saturating_add(1)
+        ));
+    }
+    location
+}
+
+fn diagnostic_severity(value: i32) -> &'static str {
+    match pb::DiagnosticSeverity::try_from(value) {
+        Ok(pb::DiagnosticSeverity::Error) => "error",
+        Ok(pb::DiagnosticSeverity::Warning) => "warning",
+        Ok(pb::DiagnosticSeverity::Information) => "information",
+        Ok(pb::DiagnosticSeverity::Hint) => "hint",
+        Ok(pb::DiagnosticSeverity::Unspecified) | Err(_) => "diagnostic",
     }
 }
 
@@ -262,6 +407,106 @@ fn creates_subagent(call: &ToolCall) -> bool {
             .and_then(serde_json::Value::as_str),
         None | Some("self")
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+
+    #[test]
+    fn grep_output_contains_file_and_match_details() {
+        let value = pb::GrepResult {
+            result: Some(pb::grep_result::Result::Success(pb::GrepSuccess {
+                pattern: "Cursor".into(),
+                path: "/workspace".into(),
+                output_mode: "content".into(),
+                workspace_results: HashMap::from([
+                    (
+                        "workspace-b".into(),
+                        pb::GrepUnionResult {
+                            result: Some(pb::grep_union_result::Result::Files(
+                                pb::GrepFilesResult {
+                                    files: vec!["/workspace/Cargo.toml".into()],
+                                    total_files: 1,
+                                    ..Default::default()
+                                },
+                            )),
+                        },
+                    ),
+                    (
+                        "workspace-a".into(),
+                        pb::GrepUnionResult {
+                            result: Some(pb::grep_union_result::Result::Content(
+                                pb::GrepContentResult {
+                                    matches: vec![pb::GrepFileMatch {
+                                        file: "/workspace/README.md".into(),
+                                        matches: vec![pb::GrepContentMatch {
+                                            line_number: 7,
+                                            content: "Cursor BYOK".into(),
+                                            ..Default::default()
+                                        }],
+                                    }],
+                                    total_lines: 1,
+                                    total_matched_lines: 1,
+                                    ..Default::default()
+                                },
+                            )),
+                        },
+                    ),
+                ]),
+                active_editor_result: None,
+            })),
+        };
+
+        let (content, is_error) = grep(&value).unwrap();
+
+        assert!(!is_error);
+        assert!(content.contains("/workspace/README.md:7:Cursor BYOK"));
+        assert!(content.contains("/workspace/Cargo.toml"));
+        assert!(
+            content.find("/workspace/README.md").unwrap()
+                < content.find("/workspace/Cargo.toml").unwrap(),
+            "workspace map output must be deterministic"
+        );
+    }
+
+    #[test]
+    fn diagnostics_output_contains_each_diagnostic_detail() {
+        let value = pb::DiagnosticsResult {
+            result: Some(pb::diagnostics_result::Result::Success(
+                pb::DiagnosticsSuccess {
+                    path: "/workspace/src/main.rs".into(),
+                    diagnostics: vec![pb::Diagnostic {
+                        severity: pb::DiagnosticSeverity::Error as i32,
+                        range: Some(pb::Range {
+                            start: Some(pb::Position { line: 4, column: 8 }),
+                            end: Some(pb::Position {
+                                line: 4,
+                                column: 12,
+                            }),
+                        }),
+                        message: "cannot find value `name`".into(),
+                        source: "rustc".into(),
+                        code: "E0425".into(),
+                        is_stale: false,
+                    }],
+                    total_diagnostics: 1,
+                },
+            )),
+        };
+
+        let (content, is_error) = diagnostics(&value).unwrap();
+
+        assert!(!is_error);
+        assert!(content.contains("/workspace/src/main.rs:5:9"));
+        assert!(content.contains("-5:13"));
+        assert!(content.contains("error"));
+        assert!(content.contains("rustc"));
+        assert!(content.contains("E0425"));
+        assert!(content.contains("cannot find value `name`"));
+    }
 }
 
 fn missing(name: &str) -> Error {
