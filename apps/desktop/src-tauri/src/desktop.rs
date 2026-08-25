@@ -30,6 +30,7 @@ use crate::frontend;
 use crate::tray;
 
 pub(crate) const MAIN_WINDOW_LABEL: &str = "main";
+const AUTOSTART_ARG: &str = "--autostart";
 
 struct DesktopRuntime {
     shutdown: CancellationToken,
@@ -141,6 +142,8 @@ fn create_main_window(
 }
 
 pub fn run() {
+    let started_by_autostart = std::env::args_os().any(|arg| arg == AUTOSTART_ARG);
+
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -151,17 +154,19 @@ pub fn run() {
 
     let app = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![open_terminal_with_command])
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            tray::show_main_window(app);
+        .plugin(tauri_plugin_single_instance::init(|app, args, _| {
+            if !args.iter().any(|arg| arg == AUTOSTART_ARG) {
+                tray::show_main_window(app);
+            }
         }))
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .setup(|app| {
+        .setup(move |app| {
             app.handle().plugin(tauri_plugin_autostart::init(
                 tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-                None,
+                Some(vec![AUTOSTART_ARG]),
             ))?;
             let config = Config::desktop()?;
             #[cfg(dev)]
@@ -201,8 +206,8 @@ pub fn run() {
                 exiting: AtomicBool::new(false),
             });
             let window = create_main_window(app.handle(), address)?;
-            if silent_start {
-                tracing::info!("silent start enabled; keeping the main window hidden");
+            if silent_start && started_by_autostart {
+                tracing::info!("silent autostart enabled; keeping the main window hidden");
             } else {
                 window.show()?;
                 window.set_focus()?;
