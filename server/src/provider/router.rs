@@ -12,8 +12,8 @@ use crate::{
 };
 
 use super::{
-    AnthropicProvider, CallRecorder, OpenAiChatProvider, OpenAiResponsesProvider, Provider,
-    ProviderStream,
+    normalize::NormalizedProvider, AnthropicProvider, CallRecorder, OpenAiChatProvider,
+    OpenAiResponsesProvider, Provider, ProviderStream,
 };
 
 pub struct ProviderRouter {
@@ -160,7 +160,7 @@ fn build_inner(
             .timeout(config.request_timeout)
             .build()?,
     };
-    Ok(match config.kind {
+    let provider: Arc<dyn Provider> = match config.kind {
         ProviderKind::OpenAiChat => {
             Arc::new(OpenAiChatProvider::new(client, config.clone()).with_recorder(recorder))
         }
@@ -170,5 +170,6 @@ fn build_inner(
         ProviderKind::Anthropic => {
             Arc::new(AnthropicProvider::new(client, config.clone()).with_recorder(recorder))
         }
-    })
+    };
+    Ok(Arc::new(NormalizedProvider::new(provider)))
 }
