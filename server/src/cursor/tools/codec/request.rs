@@ -34,27 +34,33 @@ pub fn request(id: u32, call: &ToolCall, context: &ExecContext) -> Result<pb::Ag
             .map(|v| v as i32)
     };
     let message = match normalize(&call.name).as_str() {
-        "shell" => Message::ShellStreamArgs(pb::ShellArgs {
-            command: string("command")?,
-            working_directory: optional_string("working_directory").unwrap_or_default(),
-            timeout: shell_timeout(call)?,
-            tool_call_id: call.call_id.clone(),
-            file_output_threshold_bytes: Some(40_000),
-            timeout_behavior: pb::TimeoutBehavior::Background as i32,
-            hard_timeout: Some(86_400_000),
-            description: optional_string("description"),
-            output_notification: shell_notification(call)?,
-            smart_mode_approval: smart_mode_approval(
-                call,
-                "request_smart_mode_approval",
-                "smart_mode_block_reason",
-            )?,
-            requested_sandbox_policy: shell_sandbox_policy(call),
-            close_stdin: true,
-            conversation_id: Some(context.conversation_id.clone()),
-            admin_command_denylist: context.admin_command_denylist.clone(),
-            ..Default::default()
-        }),
+        "shell" => {
+            let command = string("command")?;
+            let (simple_commands, parsing_result) = shell_command_metadata(&command);
+            Message::ShellStreamArgs(pb::ShellArgs {
+                command,
+                working_directory: optional_string("working_directory").unwrap_or_default(),
+                timeout: shell_timeout(call)?,
+                tool_call_id: call.call_id.clone(),
+                simple_commands,
+                parsing_result,
+                file_output_threshold_bytes: Some(40_000),
+                timeout_behavior: pb::TimeoutBehavior::Background as i32,
+                hard_timeout: Some(86_400_000),
+                description: optional_string("description"),
+                output_notification: shell_notification(call)?,
+                smart_mode_approval: smart_mode_approval(
+                    call,
+                    "request_smart_mode_approval",
+                    "smart_mode_block_reason",
+                )?,
+                requested_sandbox_policy: shell_sandbox_policy(call),
+                close_stdin: true,
+                conversation_id: Some(context.conversation_id.clone()),
+                admin_command_denylist: context.admin_command_denylist.clone(),
+                ..Default::default()
+            })
+        }
         "read" => Message::ReadArgs(pb::ReadArgs {
             path: string("path")?,
             tool_call_id: call.call_id.clone(),
@@ -368,10 +374,7 @@ pub fn abort(id: u32) -> pb::AgentServerMessage {
 
 fn shell_sandbox_policy(call: &ToolCall) -> Option<pb::SandboxPolicy> {
     let permissions = call.arguments.get("required_permissions")?.as_array()?;
-    let perms: Vec<&str> = permissions
-        .iter()
-        .filter_map(Value::as_str)
-        .collect();
+    let perms: Vec<&str> = permissions.iter().filter_map(Value::as_str).collect();
     if perms.contains(&"all") {
         Some(pb::SandboxPolicy {
             r#type: pb::sandbox_policy::Type::InsecureNone as i32,
@@ -387,6 +390,33 @@ fn shell_sandbox_policy(call: &ToolCall) -> Option<pb::SandboxPolicy> {
     } else {
         None
     }
+}
+
+fn shell_command_metadata(command: &str) -> (Vec<String>, Option<pb::ShellCommandParsingResult>) {
+    let command = command.trim();
+    let mut parts = command.split_whitespace();
+    let Some(name) = parts.next() else {
+        return (Vec::new(), None);
+    };
+    let args = parts
+        .map(
+            |value| pb::shell_command_parsing_result::ExecutableCommandArg {
+                r#type: "word".into(),
+                value: value.into(),
+            },
+        )
+        .collect();
+    (
+        vec![command.into()],
+        Some(pb::ShellCommandParsingResult {
+            executable_commands: vec![pb::shell_command_parsing_result::ExecutableCommand {
+                name: name.into(),
+                args,
+                full_text: command.into(),
+            }],
+            ..Default::default()
+        }),
+    )
 }
 
 fn shell_timeout(call: &ToolCall) -> Result<i32> {

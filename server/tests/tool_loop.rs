@@ -398,6 +398,21 @@ async fn shell_uses_background_timeout_and_preserves_stream_identity() {
     assert!(args.close_stdin);
     assert_eq!(args.conversation_id.as_deref(), Some("conversation"));
     assert_eq!(args.file_output_threshold_bytes, Some(40_000));
+    assert_eq!(args.simple_commands, ["python3 -m http.server 8000"]);
+    let parsing = args.parsing_result.as_ref().unwrap();
+    assert!(!parsing.parsing_failed);
+    assert_eq!(parsing.executable_commands.len(), 1);
+    let executable = &parsing.executable_commands[0];
+    assert_eq!(executable.name, "python3");
+    assert_eq!(executable.full_text, "python3 -m http.server 8000");
+    assert_eq!(
+        executable
+            .args
+            .iter()
+            .map(|argument| (argument.r#type.as_str(), argument.value.as_str()))
+            .collect::<Vec<_>>(),
+        [("word", "-m"), ("word", "http.server"), ("word", "8000")]
+    );
 
     let rendered = cursor_server::cursor::interaction::render_tool_call(&shell, false).unwrap();
     let Some(pb::tool_call::Tool::ShellToolCall(rendered)) = rendered.tool else {
