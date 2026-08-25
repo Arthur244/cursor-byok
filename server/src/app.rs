@@ -84,6 +84,10 @@ impl App {
         self.harness.clone()
     }
 
+    pub fn store(&self) -> Store {
+        self.store.clone()
+    }
+
     pub async fn serve(self) -> Result<()> {
         let listener = self.bind().await?;
         let shutdown = CancellationToken::new();

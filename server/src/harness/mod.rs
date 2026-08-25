@@ -31,7 +31,6 @@ pub enum CaState {
     Untrusted,
     Ready,
     Invalid,
-    Unsupported,
 }
 
 #[derive(Clone, Debug, Serialize)]

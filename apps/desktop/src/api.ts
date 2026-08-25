@@ -66,7 +66,7 @@ export interface ModelConnectivityResult {
   output: string;
 }
 
-export type CaState = "missing" | "untrusted" | "ready" | "invalid" | "unsupported";
+export type CaState = "missing" | "untrusted" | "ready" | "invalid";
 export type IntegrationState = "disabled" | "enabled" | "degraded";
 export interface CursorHarnessStatus {
   platform: string;
@@ -112,6 +112,10 @@ export type TabMode = "public" | "direct" | "custom";
 export interface TabSettings {
   mode: TabMode;
   address: string;
+}
+
+export interface DesktopSettings {
+  silent_start: boolean;
 }
 
 export interface OverviewMetrics {
@@ -310,4 +314,6 @@ export const api = {
   setProxySettings: (settings: ProxySettingsInput) => request<ProxySettings>("/settings/proxy", { method: "PUT", body: JSON.stringify(settings) }),
   tabSettings: () => request<TabSettings>("/settings/tab"),
   setTabSettings: (settings: TabSettings) => request<TabSettings>("/settings/tab", { method: "PUT", body: JSON.stringify(settings) }),
+  desktopSettings: () => request<DesktopSettings>("/settings/desktop"),
+  setDesktopSettings: (settings: DesktopSettings) => request<DesktopSettings>("/settings/desktop", { method: "PUT", body: JSON.stringify(settings) }),
 };

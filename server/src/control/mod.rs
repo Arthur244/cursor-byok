@@ -165,6 +165,10 @@ pub fn api_router(service: ControlService) -> Router {
             get(settings::get_tab).put(settings::update_tab),
         )
         .route(
+            "/__byok-api__/api/settings/desktop",
+            get(settings::get_desktop).put(settings::update_desktop),
+        )
+        .route(
             "/__byok-api__/api/harness/cursor/status",
             get(harness::status),
         )

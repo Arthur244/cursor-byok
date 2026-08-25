@@ -431,8 +431,8 @@
       "refs": [
         {
           "file": "components/cursor/CursorGates.tsx",
-          "line": 22,
-          "column": 107
+          "line": 21,
+          "column": 65
         }
       ]
     },
@@ -484,7 +484,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorGates.tsx",
-          "line": 38,
+          "line": 37,
           "column": 59
         },
         {
@@ -576,7 +576,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 87,
+          "line": 120,
           "column": 27
         }
       ]
@@ -789,7 +789,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 51,
+          "line": 72,
           "column": 29
         }
       ]
@@ -803,7 +803,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 83,
+          "line": 116,
           "column": 13
         }
       ]
@@ -1320,6 +1320,18 @@
         }
       ]
     },
+    "47d1c20aa017ff05": {
+      "source": "开机启动时不显示主窗口，仅保留系统托盘图标。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "components/settings/AppLifecycleSettingsCard.tsx",
+          "line": 102,
+          "column": 17
+        }
+      ]
+    },
     "48b970b568a7f8f9": {
       "source": "代理设置",
       "kind": "text",
@@ -1355,7 +1367,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 82,
+          "line": 115,
           "column": 13
         }
       ]
@@ -1514,8 +1526,8 @@
       "refs": [
         {
           "file": "components/cursor/CursorGates.tsx",
-          "line": 23,
-          "column": 222
+          "line": 22,
+          "column": 205
         }
       ]
     },
@@ -1665,7 +1677,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 40,
+          "line": 48,
           "column": 40
         }
       ]
@@ -1789,7 +1801,7 @@
       "refs": [
         {
           "file": "api.ts",
-          "line": 290,
+          "line": 294,
           "column": 43
         }
       ]
@@ -1801,7 +1813,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 80,
+          "line": 113,
           "column": 18
         }
       ]
@@ -1844,7 +1856,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorGates.tsx",
-          "line": 36,
+          "line": 35,
           "column": 14
         }
       ]
@@ -1974,7 +1986,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 51,
+          "line": 72,
           "column": 78
         }
       ]
@@ -2012,18 +2024,6 @@
           "file": "pages/ProvidersPage.tsx",
           "line": 84,
           "column": 63
-        }
-      ]
-    },
-    "722e156c20650a3f": {
-      "source": "请使用 macOS 或 Windows。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "components/cursor/CursorGates.tsx",
-          "line": 22,
-          "column": 26
         }
       ]
     },
@@ -2082,7 +2082,7 @@
       "refs": [
         {
           "file": "api.ts",
-          "line": 285,
+          "line": 289,
           "column": 43
         }
       ]
@@ -2185,8 +2185,8 @@
       "refs": [
         {
           "file": "components/cursor/CursorGates.tsx",
-          "line": 23,
-          "column": 138
+          "line": 22,
+          "column": 121
         }
       ]
     },
@@ -2197,7 +2197,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 91,
+          "line": 124,
           "column": 37
         }
       ]
@@ -2221,7 +2221,7 @@
       "refs": [
         {
           "file": "api.ts",
-          "line": 231,
+          "line": 235,
           "column": 21
         }
       ]
@@ -2250,12 +2250,12 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 68,
+          "line": 89,
           "column": 18
         },
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 74,
+          "line": 95,
           "column": 16
         }
       ]
@@ -2269,6 +2269,18 @@
           "file": "pages/CursorSettingsPage.tsx",
           "line": 251,
           "column": 21
+        }
+      ]
+    },
+    "864597982c308d72": {
+      "source": "已开启静默启动",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "components/settings/AppLifecycleSettingsCard.tsx",
+          "line": 61,
+          "column": 25
         }
       ]
     },
@@ -2508,18 +2520,6 @@
         }
       ]
     },
-    "95f76d30c25d5eda": {
-      "source": "当前系统暂不支持安装 CA",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "components/cursor/CursorGates.tsx",
-          "line": 21,
-          "column": 28
-        }
-      ]
-    },
     "966498853d801a52": {
       "source": "TAB 选择",
       "kind": "text",
@@ -2558,8 +2558,8 @@
       "refs": [
         {
           "file": "components/cursor/CursorGates.tsx",
-          "line": 23,
-          "column": 205
+          "line": 22,
+          "column": 188
         }
       ]
     },
@@ -2613,6 +2613,18 @@
           "file": "components/cursor/CursorModelEditor.tsx",
           "line": 86,
           "column": 63
+        }
+      ]
+    },
+    "9e356080c56877f8": {
+      "source": "已关闭静默启动",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "components/settings/AppLifecycleSettingsCard.tsx",
+          "line": 61,
+          "column": 40
         }
       ]
     },
@@ -2683,8 +2695,25 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 65,
+          "line": 86,
           "column": 29
+        }
+      ]
+    },
+    "a1b8c98f29374a2f": {
+      "source": "静默启动",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "components/settings/AppLifecycleSettingsCard.tsx",
+          "line": 101,
+          "column": 18
+        },
+        {
+          "file": "components/settings/AppLifecycleSettingsCard.tsx",
+          "line": 107,
+          "column": 16
         }
       ]
     },
@@ -2734,8 +2763,8 @@
       "refs": [
         {
           "file": "components/cursor/CursorGates.tsx",
-          "line": 23,
-          "column": 170
+          "line": 22,
+          "column": 153
         }
       ]
     },
@@ -2906,7 +2935,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 40,
+          "line": 48,
           "column": 25
         }
       ]
@@ -2918,7 +2947,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 87,
+          "line": 120,
           "column": 39
         }
       ]
@@ -3561,7 +3590,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 69,
+          "line": 90,
           "column": 17
         }
       ]
@@ -3962,8 +3991,8 @@
       "refs": [
         {
           "file": "components/cursor/CursorGates.tsx",
-          "line": 21,
-          "column": 68
+          "line": 20,
+          "column": 33
         }
       ]
     },
@@ -4121,7 +4150,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorGates.tsx",
-          "line": 37,
+          "line": 36,
           "column": 12
         }
       ]
@@ -4296,7 +4325,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 91,
+          "line": 124,
           "column": 25
         }
       ]
@@ -4308,8 +4337,8 @@
       "refs": [
         {
           "file": "components/cursor/CursorGates.tsx",
-          "line": 21,
-          "column": 89
+          "line": 20,
+          "column": 54
         }
       ]
     },
@@ -4422,8 +4451,8 @@
       "refs": [
         {
           "file": "components/cursor/CursorGates.tsx",
-          "line": 22,
-          "column": 73
+          "line": 21,
+          "column": 31
         }
       ]
     },
