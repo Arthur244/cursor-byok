@@ -137,6 +137,7 @@ async fn call_summary_is_always_stored_and_payloads_follow_detailed_setting() {
     store
         .claim_run(&PreparedRun {
             run_id: RunId::new("run-1"),
+            cursor_request_id: None,
             conversation_id,
             kind: RunKind::Root,
             model: ModelSpec::new(call.model_hash.clone()),

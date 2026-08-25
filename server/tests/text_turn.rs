@@ -289,7 +289,7 @@ async fn text_turn_runs_from_bidi_request_through_checkpoint_and_end_stream() {
         .unwrap();
     assert!(messages[0].message_id.starts_with("request-context:"));
     assert_eq!(messages[0].role, Role::User);
-    assert_eq!(messages[1].message_id, "runtime:run-request:request");
+    assert_eq!(messages[1].message_id, "runtime:cursor:user:user");
     assert_eq!(messages[1].role, Role::User);
     assert_eq!(
         messages.len(),
@@ -300,11 +300,14 @@ async fn text_turn_runs_from_bidi_request_through_checkpoint_and_end_stream() {
         .fetch_all(store.pool())
         .await
         .unwrap();
-    assert_eq!(
-        stored_runs,
-        vec!["request"],
-        "the concrete request_id, not Cursor's reusable wire run_id, owns the execution"
-    );
+    assert_eq!(stored_runs.len(), 1);
+    let execution_suffix = stored_runs[0]
+        .strip_prefix("request:")
+        .expect("the local Run keeps the Cursor request id as a readable prefix");
+    assert_eq!(execution_suffix.len(), 8);
+    assert!(execution_suffix
+        .bytes()
+        .all(|byte| byte.is_ascii_hexdigit()));
 }
 
 fn client_run(conversation_id: &str, text: &str, model_id: &str) -> pb::AgentClientMessage {

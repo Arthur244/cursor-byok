@@ -203,12 +203,12 @@ async fn buffered(request: Request<Body>) -> Result<(axum::http::request::Parts,
 }
 
 fn parent_headers(headers: &HeaderMap) -> Result<Option<CursorParent>> {
-    let run_id = header_text(headers, "x-parent-request-id")?;
+    let request_id = header_text(headers, "x-parent-request-id")?;
     let tool_call_id = header_text(headers, "x-parent-agent-tool-call-id")?;
-    match (run_id, tool_call_id) {
+    match (request_id, tool_call_id) {
         (None, None) => Ok(None),
-        (Some(run_id), Some(tool_call_id)) => Ok(Some(CursorParent {
-            run_id: run_id.into(),
+        (Some(request_id), Some(tool_call_id)) => Ok(Some(CursorParent {
+            request_id: request_id.into(),
             tool_call_id: tool_call_id.into(),
         })),
         _ => Err(crate::Error::Protocol(
@@ -270,7 +270,7 @@ mod tests {
         assert_eq!(
             parent_headers(&headers).unwrap(),
             Some(CursorParent {
-                run_id: "parent-run".into(),
+                request_id: "parent-run".into(),
                 tool_call_id: "parent-call".into(),
             })
         );
