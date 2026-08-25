@@ -51,7 +51,6 @@ pub struct ProviderEndpoint {
     pub name: String,
     pub provider_type: ProviderType,
     pub base_url: String,
-    #[serde(skip_serializing)]
     pub api_key: Option<String>,
     pub has_api_key: bool,
     pub custom_headers: serde_json::Value,
