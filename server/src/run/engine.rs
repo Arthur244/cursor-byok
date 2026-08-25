@@ -850,6 +850,7 @@ mod tests {
         let messages = vec![old_history, current_runtime.clone()];
         let prepared = PreparedRun {
             run_id: RunId::new("run"),
+            cursor_request_id: None,
             conversation_id: ConversationId::new("conversation"),
             kind: RunKind::Root,
             model: ModelSpec {
@@ -890,6 +891,7 @@ mod tests {
         let messages = vec![old_history, current_runtime.clone()];
         let prepared = PreparedRun {
             run_id: RunId::new("run"),
+            cursor_request_id: None,
             conversation_id: ConversationId::new("conversation"),
             kind: RunKind::Root,
             model: ModelSpec {
