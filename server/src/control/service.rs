@@ -22,7 +22,8 @@ use crate::{
     },
     provider::{ModelEvent, Provider},
     store::{
-        PortSettings, ProxySettings, ProxySettingsInput, StatisticsStorage, Store, TabSettings,
+        DesktopSettings, PortSettings, ProxySettings, ProxySettingsInput, StatisticsStorage, Store,
+        TabSettings,
     },
     Error, Result,
 };
@@ -496,6 +497,14 @@ impl ControlService {
 
     pub async fn set_tab_settings(&self, settings: TabSettings) -> Result<TabSettings> {
         self.cursor_harness.set_tab_settings(settings).await
+    }
+
+    pub async fn desktop_settings(&self) -> Result<DesktopSettings> {
+        self.store.desktop_settings().await
+    }
+
+    pub async fn set_desktop_settings(&self, settings: DesktopSettings) -> Result<()> {
+        self.store.set_desktop_settings(settings).await
     }
 }
 

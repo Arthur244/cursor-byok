@@ -170,7 +170,11 @@ export function CursorSettingsPage() {
     }
   };
   const openCaTerminal = () => {
-    if (caCommand) void api.openCursorCaInstallTerminal(caCommand);
+    if (caCommand) {
+      api
+        .openCursorCaInstallTerminal(caCommand)
+        .catch((cause) => message(cause instanceof Error ? cause.message : String(cause)));
+    }
     setCaCommand(null);
     setWaitingForCaRefresh(true);
   };
