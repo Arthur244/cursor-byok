@@ -73,8 +73,10 @@ export function Modal({ id, open, title, children, banner, busy, wide, role = "d
     };
     document.addEventListener("keydown", onKey);
     const focusFrame = requestAnimationFrame(() => {
-      const target = initialFocus === "submit" ? submitButton.current : focusableElements(dialog.current!)[0];
-      (target ?? dialog.current)?.focus();
+      const currentDialog = dialog.current;
+      if (!currentDialog) return;
+      const target = initialFocus === "submit" ? submitButton.current : focusableElements(currentDialog)[0];
+      (target ?? currentDialog).focus();
     });
     return () => {
       cancelAnimationFrame(focusFrame);
