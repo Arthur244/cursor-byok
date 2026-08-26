@@ -138,6 +138,68 @@ async fn background_subagent_completion_starts_a_simulated_parent_turn() {
 }
 
 #[tokio::test]
+async fn retrying_one_background_completion_reuses_its_runtime_message() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(stop_response("model-call", "followed up"));
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = CursorSessionRegistry::new(
+        store.clone(),
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+        Default::default(),
+    );
+    let first = registry.get_or_create("completion-retry-1").await.unwrap();
+    let (checkpoint, _) = drive_completion(
+        &first,
+        completion_run(
+            "retry-child",
+            "completion-retry-run-1",
+            pb::ConversationStateStructure {
+                mode: Some(pb::AgentMode::Multitask as i32),
+                ..Default::default()
+            },
+        ),
+    )
+    .await;
+
+    provider.push(stop_response("model-call-2", "followed up again"));
+    let second = registry.get_or_create("completion-retry-2").await.unwrap();
+    drive_completion(
+        &second,
+        completion_run_with_detail(
+            "retry-child",
+            "completion-retry-run-2",
+            checkpoint,
+            "updated retry payload",
+        ),
+    )
+    .await;
+
+    let messages = store
+        .load_current_messages(&cursor_server::model::ConversationId::new(
+            "parent-conversation",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        messages
+            .iter()
+            .filter(|message| {
+                message.runtime_event_id.as_deref()
+                    == Some("background-completed:BACKGROUND_TASK_KIND_SUBAGENT:retry-child")
+            })
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
 async fn background_shell_completion_wakes_the_parent_with_the_captured_notification() {
     let (_directory, store) = fixtures::temp_store().await;
     let provider = fake_provider::FakeProvider::default();
@@ -340,6 +402,15 @@ fn completion_run(
     run_id: &str,
     conversation_state: pb::ConversationStateStructure,
 ) -> pb::AgentClientMessage {
+    completion_run_with_detail(child_id, run_id, conversation_state, "child result")
+}
+
+fn completion_run_with_detail(
+    child_id: &str,
+    run_id: &str,
+    conversation_state: pb::ConversationStateStructure,
+    detail: &str,
+) -> pb::AgentClientMessage {
     pb::AgentClientMessage {
         message: Some(pb::agent_client_message::Message::RunRequest(
             pb::AgentRunRequest {
@@ -352,7 +423,7 @@ fn completion_run(
                                     kind: pb::BackgroundTaskKind::Subagent as i32,
                                     status: pb::BackgroundTaskStatus::Success as i32,
                                     title: "Inspect protocol".into(),
-                                    detail: Some("child result".into()),
+                                    detail: Some(detail.into()),
                                     output_path: Some("/tmp/child.jsonl".into()),
                                     reason: pb::BackgroundTaskCompletionReason::TaskFinished as i32,
                                     subagent_id: Some(child_id.into()),

@@ -181,7 +181,7 @@ pub(crate) async fn prepare(
         None => proposed_base_revision_id,
     };
     let existing_runtime = match event_id.as_deref() {
-        Some(event_id) if !background_completion => {
+        Some(event_id) => {
             store
                 .message(&conversation_id, &format!("runtime:{event_id}"))
                 .await?
@@ -207,14 +207,22 @@ pub(crate) async fn prepare(
     } else {
         match (turn_user.clone(), event_id) {
             (Some(mut user), Some(event_id)) if background_completion => {
-                let (message, text) = runtime::compile_background(
-                    event_id,
-                    &user,
-                    &request_context,
-                    &action_context,
-                    blob_sync,
-                )
-                .await?;
+                let (message, text) = match existing_runtime {
+                    Some(message) => {
+                        let text = runtime_message_text(&message)?;
+                        (message, text)
+                    }
+                    None => {
+                        runtime::compile_background(
+                            event_id,
+                            &user,
+                            &request_context,
+                            &action_context,
+                            blob_sync,
+                        )
+                        .await?
+                    }
+                };
                 user.text = text;
                 turn_user = Some(user);
                 vec![message]
@@ -304,6 +312,20 @@ pub(crate) async fn prepare(
             compacting,
         },
     ))
+}
+
+fn runtime_message_text(message: &CanonicalMessage) -> Result<String> {
+    let MessageContent::Parts { parts } = &message.content else {
+        return Err(Error::Protocol(
+            "stored runtime message does not contain parts".into(),
+        ));
+    };
+    let Some(ContentPart::Text { text }) = parts.first() else {
+        return Err(Error::Protocol(
+            "stored runtime message does not start with text".into(),
+        ));
+    };
+    Ok(text.clone())
 }
 
 fn run_kind(subagent_type_name: Option<&str>, parent: Option<(RunId, String)>) -> Result<RunKind> {

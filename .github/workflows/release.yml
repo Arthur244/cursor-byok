@@ -213,6 +213,26 @@ jobs:
             --output legacy-update/update.json \
             --notes "Cursor BYOK v${VERSION}"
 
+      - name: Normalize Tauri updater download URLs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          mkdir -p tauri-update
+          gh release download "v${VERSION}" --pattern latest.json --dir tauri-update
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/v${VERSION}" > tauri-update/release.json
+          node scripts/release/normalize-tauri-update.mjs \
+            --manifest tauri-update/latest.json \
+            --release tauri-update/release.json \
+            --repository "${GITHUB_REPOSITORY}" \
+            --version "${VERSION}"
+
+      - name: Upload normalized Tauri updater manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: gh release upload "v${VERSION}" tauri-update/latest.json --clobber
+
       - name: Upload legacy updater assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
