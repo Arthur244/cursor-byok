@@ -33,7 +33,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 88,
+          "line": 142,
           "column": 40
         }
       ]
@@ -159,7 +159,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 118,
+          "line": 172,
           "column": 16
         },
         {
@@ -369,7 +369,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 105,
+          "line": 159,
           "column": 16
         },
         {
@@ -434,8 +434,8 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 90,
-          "column": 283
+          "line": 144,
+          "column": 286
         }
       ]
     },
@@ -446,12 +446,12 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 79,
+          "line": 133,
           "column": 59
         },
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 79,
+          "line": 133,
           "column": 124
         }
       ]
@@ -661,17 +661,17 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 94,
+          "line": 148,
           "column": 49
         },
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 96,
+          "line": 150,
           "column": 50
         },
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 99,
+          "line": 153,
           "column": 50
         }
       ]
@@ -759,7 +759,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 90,
+          "line": 144,
           "column": 42
         }
       ]
@@ -809,7 +809,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 101,
+          "line": 155,
           "column": 27
         },
         {
@@ -919,7 +919,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 91,
+          "line": 145,
           "column": 42
         }
       ]
@@ -1478,7 +1478,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 94,
+          "line": 148,
           "column": 25
         },
         {
@@ -1524,7 +1524,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 85,
+          "line": 139,
           "column": 145
         }
       ]
@@ -1553,7 +1553,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 143,
+          "line": 197,
           "column": 41
         }
       ]
@@ -1707,12 +1707,12 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 96,
+          "line": 150,
           "column": 27
         },
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 99,
+          "line": 153,
           "column": 27
         },
         {
@@ -1741,7 +1741,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 92,
+          "line": 146,
           "column": 69
         }
       ]
@@ -2316,7 +2316,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 112,
+          "line": 166,
           "column": 16
         },
         {
@@ -2434,8 +2434,8 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 90,
-          "column": 295
+          "line": 144,
+          "column": 298
         }
       ]
     },
@@ -2538,7 +2538,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 85,
+          "line": 139,
           "column": 115
         }
       ]
@@ -2620,7 +2620,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 79,
+          "line": 133,
           "column": 76
         }
       ]
@@ -2793,12 +2793,12 @@
         },
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 100,
+          "line": 154,
           "column": 27
         },
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 100,
+          "line": 154,
           "column": 58
         }
       ]
@@ -3079,7 +3079,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 86,
+          "line": 140,
           "column": 61
         }
       ]
@@ -3118,7 +3118,7 @@
         },
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 91,
+          "line": 145,
           "column": 25
         }
       ]
@@ -3154,7 +3154,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 92,
+          "line": 146,
           "column": 118
         }
       ]
@@ -3411,7 +3411,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 91,
+          "line": 145,
           "column": 99
         }
       ]
@@ -3548,12 +3548,12 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 97,
+          "line": 151,
           "column": 27
         },
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 97,
+          "line": 151,
           "column": 58
         }
       ]
@@ -3625,7 +3625,7 @@
         },
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 90,
+          "line": 144,
           "column": 25
         }
       ]
@@ -3695,7 +3695,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 101,
+          "line": 155,
           "column": 50
         }
       ]
@@ -3736,7 +3736,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 85,
+          "line": 139,
           "column": 70
         }
       ]
@@ -3758,6 +3758,18 @@
         }
       ]
     },
+    "d58c88688e1a949d": {
+      "source": "常用预设",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "components/cursor/CursorPresetChips.tsx",
+          "line": 8,
+          "column": 37
+        }
+      ]
+    },
     "d60669bb26a22f5d": {
       "source": "留空使用默认值",
       "kind": "text",
@@ -3765,17 +3777,17 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 94,
+          "line": 148,
           "column": 121
         },
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 96,
+          "line": 150,
           "column": 122
         },
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 99,
+          "line": 153,
           "column": 122
         }
       ]
@@ -3787,7 +3799,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 101,
+          "line": 155,
           "column": 137
         }
       ]
@@ -3852,7 +3864,12 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 92,
+          "line": 107,
+          "column": 88
+        },
+        {
+          "file": "components/cursor/CursorModelEditor.tsx",
+          "line": 146,
           "column": 54
         }
       ]
@@ -4089,7 +4106,7 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 85,
+          "line": 139,
           "column": 54
         }
       ]
@@ -4159,12 +4176,12 @@
       "refs": [
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 75,
+          "line": 129,
           "column": 25
         },
         {
           "file": "components/cursor/CursorModelEditor.tsx",
-          "line": 75,
+          "line": 129,
           "column": 55
         }
       ]
