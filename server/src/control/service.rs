@@ -659,7 +659,32 @@ fn model_discovery_url(base_url: &str) -> Result<Url> {
             "model request URL must contain a host".into(),
         ));
     }
-    url.set_path("/v1/models");
+    // 在现有路径上追加，而不是整段替换：多数编程套餐的 API 挂在子路径下
+    // （/api/anthropic、/coding、/api/paas/v4 等），直接 set_path("/v1/models")
+    // 会把这些前缀吃掉，发现请求必然 404
+    let path = url.path().trim_end_matches('/');
+    let last = path.rsplit('/').next().unwrap_or("");
+    let versioned = last.len() > 1
+        && last.starts_with('v')
+        && last[1..].bytes().all(|byte| byte.is_ascii_digit());
+    let new_path = if let Some(parent) = path.strip_suffix("/chat/completions") {
+        // 完整请求 URL：剥掉端点段（chat/completions 是两段），换成 models
+        format!("{parent}/models")
+    } else if let Some(parent) = path
+        .strip_suffix("/responses")
+        .or_else(|| path.strip_suffix("/messages"))
+        .or_else(|| path.strip_suffix("/completions"))
+    {
+        format!("{parent}/models")
+    } else if path.is_empty() {
+        "/v1/models".to_string()
+    } else if versioned {
+        // 已带版本段（/v1、/api/v3、/api/paas/v4）：只补 models
+        format!("{path}/models")
+    } else {
+        format!("{path}/v1/models")
+    };
+    url.set_path(&new_path);
     url.set_query(None);
     url.set_fragment(None);
     Ok(url)
@@ -797,7 +822,25 @@ mod tests {
         store::Store,
     };
 
-    use super::ControlService;
+    use super::{model_discovery_url, ControlService};
+
+    #[test]
+    fn model_discovery_url_appends_to_path() {
+        let cases = [
+            ("https://api.deepseek.com", "https://api.deepseek.com/v1/models"),
+            ("https://open.bigmodel.cn/api/anthropic", "https://open.bigmodel.cn/api/anthropic/v1/models"),
+            ("https://api.kimi.com/coding", "https://api.kimi.com/coding/v1/models"),
+            ("https://api.moonshot.cn/v1", "https://api.moonshot.cn/v1/models"),
+            ("https://ark.cn-beijing.volces.com/api/v3", "https://ark.cn-beijing.volces.com/api/v3/models"),
+            (
+                "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions",
+                "https://open.bigmodel.cn/api/coding/paas/v4/models",
+            ),
+        ];
+        for (base, expected) in cases {
+            assert_eq!(model_discovery_url(base).unwrap().as_str(), expected, "base: {base}");
+        }
+    }
 
     struct TestProvider {
         invocation: Arc<Mutex<Option<ModelInvocation>>>,
@@ -899,12 +942,12 @@ mod tests {
     }
 
     #[test]
-    fn model_discovery_url_uses_only_the_provider_origin() {
+    fn model_discovery_url_keeps_provider_path_prefix() {
         assert_eq!(
             super::model_discovery_url("https://example.com:8443/arbitrary/v1/chat/completions")
                 .unwrap()
                 .as_str(),
-            "https://example.com:8443/v1/models"
+            "https://example.com:8443/arbitrary/v1/models"
         );
     }
 
@@ -933,7 +976,7 @@ mod tests {
 
         let (sender, mut requests) = tokio::sync::mpsc::unbounded_channel();
         let app = axum::Router::new()
-            .route("/v1/models", axum::routing::get(models))
+            .route("/custom/models", axum::routing::get(models))
             .with_state(sender);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
@@ -970,7 +1013,8 @@ mod tests {
         assert_eq!(result.models, vec!["model-a"]);
         let (method, uri, headers, body) = requests.recv().await.unwrap();
         assert_eq!(method, axum::http::Method::GET);
-        assert_eq!(uri.path(), "/v1/models");
+        // /custom/responses 剥掉端点段后是 /custom，发现地址为 /custom/models
+        assert_eq!(uri.path(), "/custom/models");
         assert!(body.is_empty());
         assert!(headers.get(axum::http::header::USER_AGENT).is_none());
         assert_eq!(headers.get("x-tenant").unwrap(), "tenant-a");
