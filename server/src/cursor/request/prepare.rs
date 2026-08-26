@@ -135,12 +135,8 @@ pub(crate) async fn prepare(
         mode_from_proto(mode_number)?
     };
     let mut model = model::requested_model(request)?;
-    if let Some(provider_model) = store
-        .provider_model(&model.model_id)
-        .await?
-        .filter(|model| model.enabled)
-    {
-        provider_model.configure(&mut model);
+    if let Some(configured_model) = store.model(&model.model_id).await? {
+        configured_model.configure(&mut model);
     }
     let dynamic = context::dynamic_mcp(request, &request_context)?;
     let subagent_model_overrides = model::overrides(request)?;

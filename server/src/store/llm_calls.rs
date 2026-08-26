@@ -328,36 +328,36 @@ fn summary_from_row(row: sqlx::sqlite::SqliteRow) -> Result<LlmCallSummary> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ProviderEndpointInput, ProviderModelInput};
+    use crate::model::{ModelConfigInput, ModelType};
 
     #[tokio::test]
     async fn latest_usage_anchor_uses_the_latest_completed_call_for_the_same_conversation_and_model(
     ) {
         let store = Store::connect("sqlite::memory:").await.unwrap();
-        let (provider, model) = store
-            .create_provider_with_model(
-                &ProviderEndpointInput {
-                    name: "Test".into(),
-                    provider_type: ProviderType::OpenAiResponses,
-                    base_url: "https://example.com".into(),
-                    api_key: Some("secret".into()),
-                    custom_headers: serde_json::json!({}),
-                    extra_params: serde_json::json!({}),
-                },
-                &ProviderModelInput {
-                    model_id: "model".into(),
-                    display_name: "Model".into(),
-                    endpoint_type: ProviderType::OpenAiResponses,
-                    request_url: String::new(),
-                    enabled: true,
-                    sort_order: 0,
-                    context_window_tokens: Some(200_000),
-                    max_output_tokens: Some(16_000),
-                    reasoning_enabled: false,
-                    reasoning_effort: None,
-                    supports_image_generation: false,
-                },
-            )
+        let model = store
+            .create_model(&ModelConfigInput {
+                model_id: "model".into(),
+                display_name: "Model".into(),
+                model_type: ModelType::OpenAi,
+                base_url: "https://example.com/v1/responses".into(),
+                use_full_url: true,
+                api_key: "secret".into(),
+                tooltip_data: "Model".into(),
+                sort_order: 0,
+                reasoning_effort: None,
+                openai_endpoint: "/v1/responses".into(),
+                openai_extra_params_enabled: false,
+                openai_extra_params: serde_json::json!({}),
+                custom_headers_enabled: false,
+                custom_headers: serde_json::json!({}),
+                anthropic_extra_params_enabled: false,
+                anthropic_extra_params: serde_json::json!({}),
+                context_window_tokens: Some(200_000),
+                max_completion_tokens: Some(16_000),
+                anthropic_max_tokens: None,
+                anthropic_thinking_effort: None,
+                thinking_budget_tokens: None,
+            })
             .await
             .unwrap();
         let conversation_id = ConversationId::new("conversation");
@@ -374,10 +374,10 @@ mod tests {
                     conversation_id: conversation_id.to_string(),
                     provider_call_index: 0,
                     model_hash: model.model_hash.clone(),
-                    provider_type: provider.provider_type,
-                    provider_url: provider.base_url.clone(),
-                    request_type: model.endpoint_type,
-                    request_url: model.request_url.clone(),
+                    provider_type: model.provider_type(),
+                    provider_url: model.base_url.clone(),
+                    request_type: model.provider_type(),
+                    request_url: model.request_url().unwrap(),
                     model_id: model.model_id.clone(),
                     display_name: model.display_name.clone(),
                     reasoning_effort: None,

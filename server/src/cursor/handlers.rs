@@ -128,7 +128,7 @@ async fn bidi_append_handler(
     let conversation_id = decoded.conversation_id().map(str::to_owned);
     let trace_metadata = decoded.trace_metadata();
     let local = if let Some(model_id) = decoded.model_id() {
-        if registry.store().provider_model(model_id).await?.is_some() {
+        if registry.store().model(model_id).await?.is_some() {
             tracing::info!(
                 request_id = decoded.request_id,
                 model_id,

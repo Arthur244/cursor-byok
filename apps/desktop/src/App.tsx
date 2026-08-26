@@ -8,7 +8,6 @@ import { CallsPage } from "./pages/CallsPage";
 import { CallDetailsPage } from "./pages/CallDetailsPage";
 import { CursorSettingsPage } from "./pages/CursorSettingsPage";
 import { HomePage } from "./pages/HomePage";
-import { ProvidersPage } from "./pages/ProvidersPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { useAppStore } from "./store/appStore";
 import { updateStore } from "./store/updateStore";
@@ -22,7 +21,6 @@ export function App() {
           <Route element={<AppFrame />}>
             <Route element={<AppLayout />}>
               <Route index element={<HomePage />} />
-              <Route path="providers" element={<ProvidersPage />} />
               <Route path="calls" element={<CallsPage />} />
               <Route path="harness/cursor" element={<CursorSettingsPage />} />
               <Route path="settings" element={<SettingsPage />} />
