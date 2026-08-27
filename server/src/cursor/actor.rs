@@ -285,6 +285,10 @@ impl CursorActor {
                                                 {
                                                     continue;
                                                 }
+                                                if tool_runtime.is_interrupted(throw.id).await {
+                                                    tool_runtime.discard_exec(throw.id).await;
+                                                    continue;
+                                                }
                                                 match tool_runtime.take_exec(throw.id).await {
                                                     Some(pending) => results_tx.send_error(
                                                         crate::Error::Protocol(format!(

@@ -155,6 +155,11 @@ impl ToolDispatcher {
         .map(Some)
     }
 
+    pub async fn interrupt_for_message(&self) -> Vec<u32> {
+        self.edit_schedule.lock().await.clear();
+        self.runtime.interrupt_for_message().await
+    }
+
     async fn start(
         &self,
         call: &ToolCall,
@@ -193,6 +198,9 @@ impl ToolDispatcher {
         &self,
         response: &pb::InteractionResponse,
     ) -> Result<ClientToolEvent> {
+        if self.runtime.is_interrupted(response.id).await {
+            return Ok(ClientToolEvent::Pending);
+        }
         let pending = match self.runtime.take_interaction(response.id).await {
             Some(pending) => pending,
             None if self.runtime.completed_call(response.id).await.is_some() => {

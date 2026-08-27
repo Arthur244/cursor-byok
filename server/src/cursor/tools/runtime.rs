@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{
         atomic::{AtomicU32, Ordering},
         Arc,
@@ -19,6 +19,7 @@ pub struct CursorToolRuntime {
     execs: Arc<Mutex<HashMap<u32, PendingExec>>>,
     interactions: Arc<Mutex<HashMap<u32, PendingInteraction>>>,
     completed: Arc<Mutex<HashMap<u32, String>>>,
+    interrupted: Arc<Mutex<HashSet<u32>>>,
 }
 
 pub(crate) struct PendingExec {
@@ -311,6 +312,10 @@ impl CursorToolRuntime {
         self.completed.lock().await.get(&id).cloned()
     }
 
+    pub async fn is_interrupted(&self, id: u32) -> bool {
+        self.interrupted.lock().await.contains(&id)
+    }
+
     pub async fn clear_completed(&self) {
         self.completed.lock().await.clear();
     }
@@ -329,7 +334,37 @@ impl CursorToolRuntime {
         ids.sort_unstable();
         self.interactions.lock().await.clear();
         self.completed.lock().await.clear();
+        self.interrupted.lock().await.clear();
         ids
+    }
+
+    pub async fn interrupt_for_message(&self) -> Vec<u32> {
+        let (abort_ids, interrupted_ids) = {
+            let mut entries = self.execs.lock().await;
+            let mut abort_ids = Vec::new();
+            let mut interrupted_ids = Vec::new();
+            entries.retain(|id, entry| {
+                interrupted_ids.push(*id);
+                let keep_running = entry.call.name.eq_ignore_ascii_case("Task");
+                if !keep_running {
+                    abort_ids.push(*id);
+                }
+                keep_running
+            });
+            (abort_ids, interrupted_ids)
+        };
+        let interaction_ids = {
+            let mut interactions = self.interactions.lock().await;
+            let ids = interactions.keys().copied().collect::<Vec<_>>();
+            interactions.clear();
+            ids
+        };
+        let mut interrupted = self.interrupted.lock().await;
+        interrupted.extend(interrupted_ids);
+        interrupted.extend(interaction_ids);
+        let mut abort_ids = abort_ids;
+        abort_ids.sort_unstable();
+        abort_ids
     }
 
     pub async fn running_exec_ids(&self) -> Vec<u32> {

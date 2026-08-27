@@ -249,14 +249,14 @@ impl RunEngine {
             let mut pending_insertions = Vec::new();
             let cycle = loop {
                 tokio::select! {
-                    result = &mut cycle => break result,
+                    biased;
                     command = client.commands.recv() => {
                         let message = match command {
                             Some(ClientCommand::InsertMessages(insertion)) => {
                                 pending_insertions.push(insertion);
                                 continue;
                             }
-                            Some(ClientCommand::RuntimeMessage(message)) => message,
+                            Some(ClientCommand::InterruptWithMessage(message)) => message,
                             Some(ClientCommand::RuntimeEvent(event)) => event.into_message(),
                             Some(ClientCommand::Cancel) => {
                                 cycle_cancellation.cancel();
@@ -321,7 +321,8 @@ impl RunEngine {
                             Err(outcome) => return (outcome, usage),
                         };
                         continue 'model;
-                    }
+                    },
+                    result = &mut cycle => break result,
                 }
             };
             let cycle = match cycle {
@@ -558,23 +559,68 @@ impl RunEngine {
         let cycle_cancellation = cancellation.child_token();
         let (silent_events, mut discarded_events) = tokio::sync::mpsc::channel(256);
         let drain = tokio::spawn(async move { while discarded_events.recv().await.is_some() {} });
-        let cycle = consume_model_cycle(
-            self.provider.stream(invocation, cycle_cancellation.clone()),
-            &silent_events,
-            &cycle_cancellation,
-        )
-        .await;
+        let mut pending_insertions = Vec::new();
+        let mut interrupted_message = None;
+        let cycle = {
+            let cycle = consume_model_cycle(
+                self.provider.stream(invocation, cycle_cancellation.clone()),
+                &silent_events,
+                &cycle_cancellation,
+            );
+            tokio::pin!(cycle);
+            loop {
+                tokio::select! {
+                    biased;
+                    command = client.commands.recv() => match command {
+                        Some(ClientCommand::InsertMessages(insertion)) => {
+                            pending_insertions.push(insertion);
+                        }
+                        Some(ClientCommand::InterruptWithMessage(message)) => {
+                            cycle_cancellation.cancel();
+                            interrupted_message = Some(message);
+                            break cycle.await;
+                        }
+                        Some(ClientCommand::RuntimeEvent(event)) => {
+                            cycle_cancellation.cancel();
+                            interrupted_message = Some(event.into_message());
+                            break cycle.await;
+                        }
+                        Some(ClientCommand::Cancel) => {
+                            cycle_cancellation.cancel();
+                            return Err(RunOutcome::Cancelled);
+                        }
+                        Some(ClientCommand::ClientClosed { error }) => {
+                            cycle_cancellation.cancel();
+                            return Err(RunOutcome::Failed(RunFailure::Client(error)));
+                        }
+                        Some(ClientCommand::ToolResult(_)) => {
+                            cycle_cancellation.cancel();
+                            return Err(RunOutcome::Failed(RunFailure::Protocol(
+                                "received a tool result while automatic compaction was running".into(),
+                            )));
+                        }
+                        None => {
+                            cycle_cancellation.cancel();
+                            return Err(client_failure());
+                        }
+                    },
+                    result = &mut cycle => break result,
+                }
+            }
+        };
         drop(silent_events);
         let _ = drain.await;
-        let (summary, compaction_usage) = match cycle {
-            Ok(cycle) if cycle.calls.is_empty() && !cycle.text.trim().is_empty() => {
+        let (summary, compaction_usage) = match (interrupted_message.is_some(), cycle) {
+            (true, Ok(cycle)) => (fallback_summary(&compactable), cycle.usage),
+            (true, Err(failure)) => (fallback_summary(&compactable), failure.usage),
+            (false, Ok(cycle)) if cycle.calls.is_empty() && !cycle.text.trim().is_empty() => {
                 (cycle.text.trim().to_string(), cycle.usage)
             }
-            Ok(cycle) => {
+            (false, Ok(cycle)) => {
                 tracing::warn!("automatic compaction returned no usable summary; using fallback");
                 (fallback_summary(&compactable), cycle.usage)
             }
-            Err(failure) => {
+            (false, Err(failure)) => {
                 tracing::warn!(error = ?failure.failure, "automatic compaction model failed; using fallback");
                 (fallback_summary(&compactable), failure.usage)
             }
@@ -594,7 +640,7 @@ impl RunEngine {
         let mut replacement = retained_request_context.into_iter().collect::<Vec<_>>();
         replacement.push(summary_message);
         replacement.extend(prepared.initial_messages.iter().cloned());
-        let revision = self
+        let mut revision = self
             .store
             .replace_revision(
                 &prepared.conversation_id,
@@ -620,6 +666,28 @@ impl RunEngine {
         emit(client, ClientEvent::AutoCompactionCompleted)
             .await
             .map_err(|_| client_failure())?;
+        revision = append_insertions(
+            &self.store,
+            prepared,
+            client,
+            cancellation,
+            revision,
+            pending_insertions,
+        )
+        .await?
+        .0;
+        if let Some(message) = interrupted_message {
+            revision = append_runtime_message(
+                &self.store,
+                prepared,
+                client,
+                cancellation,
+                revision,
+                message,
+            )
+            .await?
+            .0;
+        }
         Ok((revision, compaction_usage))
     }
 }

@@ -9,7 +9,7 @@ use crate::run::RunOutcome;
 pub enum CommitCause {
     InitialMessages,
     ToolRoundStarted(ToolRoundId),
-    ToolResult { call_id: String },
+    ToolResult { call_id: String, interrupted: bool },
     FinalTurn,
     Compaction { summary: String },
     RuntimeEvent { event_id: String },

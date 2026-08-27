@@ -152,6 +152,19 @@ pub fn context_injection_queued(injection_id: String) -> pb::AgentServerMessage 
     ))
 }
 
+pub fn context_injection_rejected(injection_id: String, reason: String) -> pb::AgentServerMessage {
+    server_interaction(pb::interaction_update::Message::ContextInjectionState(
+        pb::ContextInjectionStateUpdate {
+            injection_id,
+            state: Some(pb::ContextInjectionState {
+                state: Some(pb::context_injection_state::State::Rejected(
+                    pb::ContextInjectionRejected { reason },
+                )),
+            }),
+        },
+    ))
+}
+
 pub fn context_injection_delivered(
     injection_id: String,
     delivery_batch_id: String,
