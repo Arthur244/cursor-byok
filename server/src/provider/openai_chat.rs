@@ -65,12 +65,14 @@ impl Provider for OpenAiChatProvider {
             let mut body = json!({
                 "model": request.model.model_id,
                 "messages": messages,
-                "tools": request.prompt.tools.iter().map(|tool| json!({"type":"function","function":{
-                    "name": tool.name, "description": tool.description, "parameters": tool.parameters
-                }})).collect::<Vec<_>>(),
                 "stream": true,
                 "stream_options": {"include_usage": true}
             });
+            if !request.prompt.tools.is_empty() {
+                body["tools"] = json!(request.prompt.tools.iter().map(|tool| json!({"type":"function","function":{
+                    "name": tool.name, "description": tool.description, "parameters": tool.parameters
+                }})).collect::<Vec<_>>());
+            }
             apply_model(&mut body, &request.model, config.max_output_tokens)?;
             merge_extra_params(&mut body, &request.model.extra_params)?;
             apply_openai_prompt_cache_key(&mut body, &request.model.model_id)?;
