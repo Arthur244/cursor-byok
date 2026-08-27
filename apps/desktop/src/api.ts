@@ -143,6 +143,7 @@ export interface TabSettings {
 
 export interface DesktopSettings {
   silent_start: boolean;
+  show_dock_icon: boolean;
 }
 
 export interface OverviewMetrics {

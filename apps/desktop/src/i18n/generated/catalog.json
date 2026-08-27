@@ -516,7 +516,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 120,
+          "line": 156,
           "column": 27
         }
       ]
@@ -735,7 +735,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 72,
+          "line": 96,
           "column": 29
         }
       ]
@@ -773,7 +773,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 116,
+          "line": 152,
           "column": 13
         }
       ]
@@ -1095,18 +1095,6 @@
         }
       ]
     },
-    "393df9bb13ea4900": {
-      "source": "命中",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "components/metrics/CacheHitRateChart.tsx",
-          "line": 60,
-          "column": 14
-        }
-      ]
-    },
     "393e1241552b1870": {
       "source": "请求",
       "kind": "text",
@@ -1193,6 +1181,18 @@
           "file": "pages/SettingsPage.tsx",
           "line": 235,
           "column": 39
+        }
+      ]
+    },
+    "3b67824289b5fa1e": {
+      "source": "已隐藏 Dock 栏图标",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "components/settings/AppLifecycleSettingsCard.tsx",
+          "line": 85,
+          "column": 45
         }
       ]
     },
@@ -1392,7 +1392,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 102,
+          "line": 126,
           "column": 17
         }
       ]
@@ -1432,7 +1432,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 115,
+          "line": 151,
           "column": 13
         }
       ]
@@ -1868,7 +1868,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 48,
+          "line": 59,
           "column": 40
         }
       ]
@@ -2004,7 +2004,7 @@
       "refs": [
         {
           "file": "api.ts",
-          "line": 314,
+          "line": 315,
           "column": 43
         }
       ]
@@ -2016,7 +2016,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 113,
+          "line": 149,
           "column": 18
         }
       ]
@@ -2092,6 +2092,23 @@
           "file": "components/metrics/HomeMetrics.tsx",
           "line": 167,
           "column": 46
+        }
+      ]
+    },
+    "680680288a6d2ad2": {
+      "source": "在 Dock 栏显示",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "components/settings/AppLifecycleSettingsCard.tsx",
+          "line": 137,
+          "column": 18
+        },
+        {
+          "file": "components/settings/AppLifecycleSettingsCard.tsx",
+          "line": 143,
+          "column": 16
         }
       ]
     },
@@ -2189,7 +2206,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 72,
+          "line": 96,
           "column": 78
         }
       ]
@@ -2280,7 +2297,7 @@
       "refs": [
         {
           "file": "api.ts",
-          "line": 309,
+          "line": 310,
           "column": 43
         }
       ]
@@ -2395,7 +2412,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 124,
+          "line": 160,
           "column": 37
         }
       ]
@@ -2407,7 +2424,7 @@
       "refs": [
         {
           "file": "api.ts",
-          "line": 258,
+          "line": 259,
           "column": 21
         }
       ]
@@ -2446,12 +2463,12 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 89,
+          "line": 113,
           "column": 18
         },
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 95,
+          "line": 119,
           "column": 16
         }
       ]
@@ -2475,7 +2492,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 61,
+          "line": 72,
           "column": 25
         }
       ]
@@ -2810,7 +2827,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 61,
+          "line": 72,
           "column": 40
         }
       ]
@@ -2896,7 +2913,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 86,
+          "line": 110,
           "column": 29
         }
       ]
@@ -2908,12 +2925,12 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 101,
+          "line": 125,
           "column": 18
         },
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 107,
+          "line": 131,
           "column": 16
         }
       ]
@@ -3142,7 +3159,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 48,
+          "line": 59,
           "column": 25
         }
       ]
@@ -3166,7 +3183,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 120,
+          "line": 156,
           "column": 39
         }
       ]
@@ -3196,6 +3213,18 @@
           "file": "components/metrics/HomeMetrics.tsx",
           "line": 128,
           "column": 5
+        }
+      ]
+    },
+    "aecb952b1e6cce36": {
+      "source": "关闭后隐藏 Dock 栏图标，仍可通过菜单栏图标打开应用。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "components/settings/AppLifecycleSettingsCard.tsx",
+          "line": 138,
+          "column": 17
         }
       ]
     },
@@ -3305,6 +3334,18 @@
           "file": "components/CallTable.tsx",
           "line": 138,
           "column": 42
+        }
+      ]
+    },
+    "b6725f218ebaef26": {
+      "source": "已显示 Dock 栏图标",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "components/settings/AppLifecycleSettingsCard.tsx",
+          "line": 85,
+          "column": 25
         }
       ]
     },
@@ -3493,7 +3534,7 @@
       "refs": [
         {
           "file": "components/metrics/CacheHitRateChart.tsx",
-          "line": 71,
+          "line": 58,
           "column": 62
         }
       ]
@@ -3724,7 +3765,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 90,
+          "line": 114,
           "column": 17
         }
       ]
@@ -4323,18 +4364,6 @@
         }
       ]
     },
-    "f3a76d896853c1df": {
-      "source": "未命中",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "components/metrics/CacheHitRateChart.tsx",
-          "line": 60,
-          "column": 23
-        }
-      ]
-    },
     "f4694c46b1e19602": {
       "source": "最终请求类型",
       "kind": "text",
@@ -4493,7 +4522,7 @@
       "refs": [
         {
           "file": "components/settings/AppLifecycleSettingsCard.tsx",
-          "line": 124,
+          "line": 160,
           "column": 25
         }
       ]
