@@ -1,0 +1,64 @@
+---
+title: 快速开始
+description: 安装 cursor-byok，并让 Cursor 使用你自己的模型 API。
+icon: Rocket
+---
+
+cursor-byok 是运行在本机的 Cursor 模型网关。它接收 Cursor Agent 请求，将请求转换后发送到你配置的 OpenAI 或 Anthropic 兼容服务。
+
+<Callout type="warn" title="使用前须知">
+cursor-byok 是独立开源项目，与 Cursor 及其开发者没有关联。软件本身免费，但模型服务商可能按用量收费。
+</Callout>
+
+## 三步开始使用
+
+<Steps>
+
+<Step>
+
+### 下载并启动
+
+从 [GitHub Releases](https://github.com/leookun/cursor-byok/releases/latest) 下载与你的操作系统对应的最新版本，然后启动 cursor-byok。
+
+</Step>
+
+<Step>
+
+### 初始化并配置模型
+
+打开 **Cursor 配置**，按界面提示初始化本地 CA，然后添加模型。填写服务地址、API Key 和模型名称，并运行连通性测试。
+
+</Step>
+
+<Step>
+
+### 在 Cursor 中使用
+
+保持 cursor-byok 运行，打开 Cursor，在模型列表中选择刚刚配置的模型，然后开始使用 Agent。
+
+</Step>
+
+</Steps>
+
+## 接下来
+
+<Cards>
+  <Card title="安装指南" description="下载、初始化和首次运行。" href="/docs/installation" />
+  <Card title="模型配置" description="选择协议并填写上游模型参数。" href="/docs/model-configuration" />
+  <Card title="故障排查" description="处理证书、连接与模型测试问题。" href="/docs/troubleshooting" />
+  <Card title="查看源码" description="了解实现或参与项目开发。" href="https://github.com/leookun/cursor-byok" external />
+</Cards>
+
+## 数据如何流转
+
+```text
+Cursor 客户端
+    │  Agent 请求与工具结果
+    ▼
+cursor-byok 本地服务
+    │  OpenAI / Anthropic 兼容请求
+    ▼
+你配置的模型 API
+```
+
+API Key、模型配置和应用设置保存在本机。模型请求仍会发送到你选择的上游服务商。

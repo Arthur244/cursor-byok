@@ -1,4 +1,3 @@
-mod await_shell;
 mod edit;
 mod exec;
 mod interaction;
@@ -58,7 +57,6 @@ pub(super) async fn start(
         "askquestion" | "websearch" | "webfetch" | "switchmode" | "createplan"
         | "generateimage" => interaction::start(runtime, call).await,
         "todowrite" | "updatecurrentstep" => local::start(call, message_index),
-        "awaitshell" => await_shell::start(runtime, results, call, context).await,
         "semblesearch" | "semblefindrelated" => semble::start(results, call, store.cloned()),
         _ => Err(Error::Protocol(format!("unsupported tool: {}", call.name))),
     }

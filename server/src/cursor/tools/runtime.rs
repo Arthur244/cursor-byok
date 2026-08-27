@@ -4,7 +4,6 @@ use std::{
         atomic::{AtomicU32, Ordering},
         Arc,
     },
-    time::Instant,
 };
 
 use tokio::sync::Mutex;
@@ -36,14 +35,6 @@ pub(crate) enum ExecStage {
     DynamicMcp(pb::McpToolDefinition),
     EditRead,
     EditWrite(EditWrite),
-    Await(AwaitState),
-}
-
-pub(crate) struct AwaitState {
-    pub deadline: Instant,
-    pub output_file_path: String,
-    pub task_id: String,
-    pub regex: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -170,60 +161,6 @@ impl CursorToolRuntime {
             Some(started_at_ms),
         )
         .await
-    }
-
-    pub(crate) async fn reserve_await(
-        &self,
-        call: &ToolCall,
-        context: &ExecContext,
-    ) -> Result<u32> {
-        let task_id = call
-            .arguments
-            .get("shell_id")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| Error::Protocol("AwaitShell is missing shell_id".into()))?;
-        let block_ms = call
-            .arguments
-            .get("block_until_ms")
-            .and_then(serde_json::Value::as_u64)
-            .unwrap_or(30_000);
-        if block_ms > 7_140_000 {
-            return Err(Error::Protocol(
-                "AwaitShell block_until_ms exceeds 7140000".into(),
-            ));
-        }
-        let output_file_path = format!(
-            "{}/{}.txt",
-            context.terminals_folder.trim_end_matches('/'),
-            task_id
-        );
-        self.reserve_exec_stage(
-            call,
-            context,
-            ExecStage::Await(AwaitState {
-                deadline: Instant::now() + std::time::Duration::from_millis(block_ms),
-                output_file_path,
-                task_id: task_id.to_string(),
-                regex: call
-                    .arguments
-                    .get("pattern")
-                    .and_then(serde_json::Value::as_str)
-                    .map(str::to_string),
-            }),
-            None,
-        )
-        .await
-    }
-
-    pub(crate) async fn reserve_await_again(
-        &self,
-        call: &ToolCall,
-        context: &ExecContext,
-        state: AwaitState,
-        started_at_ms: u64,
-    ) -> Result<u32> {
-        self.reserve_exec_stage(call, context, ExecStage::Await(state), Some(started_at_ms))
-            .await
     }
 
     async fn reserve_exec_stage(

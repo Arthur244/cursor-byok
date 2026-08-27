@@ -1,4 +1,3 @@
-mod await_shell;
 mod exec;
 mod gate;
 mod interaction;
@@ -19,7 +18,6 @@ use crate::{
 
 use super::runtime::now_ms;
 
-pub(crate) use await_shell::{await_error, await_result, await_sleep};
 pub(crate) use exec::{edit_failure, from_exec};
 pub(crate) use interaction::{complete_web_fetch, complete_web_search, from_interaction};
 pub(crate) use local::{local, subagents_disabled, todo_items};
@@ -89,9 +87,12 @@ impl ToolCompletion {
         call: &ToolCall,
         started_at_ms: u64,
         mut result: ToolResult,
-        tool: pb::tool_call::Tool,
+        mut tool: pb::tool_call::Tool,
     ) -> Self {
-        gate::model_content(&tool, &mut result.content);
+        // Apply the model-visible size gate once, at the tool completion
+        // boundary. Canonical history and every provider projection then
+        // carry the same bounded result without reprocessing it.
+        gate::tool_completion(&call.name, &mut tool, &mut result.content);
         Self {
             result,
             tool_call: pb::ToolCall {
