@@ -230,12 +230,27 @@ fn openai_chat_messages(instructions: &str, messages: &[ProjectedMessage]) -> Re
                 calls,
                 ..
             } => {
-                value.insert("content".into(), Value::String(text.clone()));
                 let replay_reasoning = replay_state
                     .as_ref()
                     .filter(|state| state.provider_kind == "openai_chat")
                     .and_then(|state| state.value.get("reasoning_content"))
-                    .and_then(Value::as_str);
+                    .and_then(Value::as_str)
+                    .filter(|reasoning| !reasoning.is_empty());
+
+                // Chat Completions rejects an empty assistant content string. Tool-call
+                // assistant messages use null content, while an assistant with no visible
+                // content at all does not need to be sent.
+                if text.is_empty() && calls.is_empty() && replay_reasoning.is_none() {
+                    continue;
+                }
+                value.insert(
+                    "content".into(),
+                    if text.is_empty() {
+                        Value::Null
+                    } else {
+                        Value::String(text.clone())
+                    },
+                );
                 if let Some(reasoning) = replay_reasoning {
                     value.insert("reasoning_content".into(), Value::String(reasoning.into()));
                 }
@@ -398,7 +413,7 @@ mod tests {
         model::{ContentPart, ProjectedContent, ProjectedMessage, ToolResultContent},
         model::{ProviderReplayState, Role, ToolCallContent},
     };
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     #[test]
     fn chat_replay_state_is_encoded_as_reasoning_content() {
@@ -428,6 +443,52 @@ mod tests {
         assert_eq!(messages[0]["content"], "visible answer");
         assert_eq!(messages[0]["reasoning_content"], "private reasoning");
         assert_eq!(messages[0]["tool_calls"][0]["id"], "call-1");
+    }
+
+    #[test]
+    fn chat_tool_call_assistant_uses_null_content() {
+        let messages = openai_chat_messages(
+            "",
+            &[ProjectedMessage {
+                message_id: "test".into(),
+                role: Role::Assistant,
+                content: ProjectedContent::Assistant {
+                    text: String::new(),
+                    thinking: String::new(),
+                    replay_state: None,
+                    calls: vec![ToolCallContent {
+                        index: 0,
+                        call_id: "call-1".into(),
+                        name: "Read".into(),
+                        arguments: json!({"path": "README.md"}),
+                    }],
+                },
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(messages[0]["content"], Value::Null);
+        assert!(messages[0]["tool_calls"].is_array());
+    }
+
+    #[test]
+    fn chat_contentless_assistant_is_omitted() {
+        let messages = openai_chat_messages(
+            "",
+            &[ProjectedMessage {
+                message_id: "test".into(),
+                role: Role::Assistant,
+                content: ProjectedContent::Assistant {
+                    text: String::new(),
+                    thinking: String::new(),
+                    replay_state: None,
+                    calls: vec![],
+                },
+            }],
+        )
+        .unwrap();
+
+        assert!(messages.is_empty());
     }
 
     #[test]
