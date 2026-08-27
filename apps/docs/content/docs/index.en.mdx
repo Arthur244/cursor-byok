@@ -1,13 +1,13 @@
 ---
 title: Quick Start
-description: Install cursor-byok and let Cursor use your own model APIs.
+description: Install Cursor Byok and let Cursor use your own model APIs.
 icon: Rocket
 ---
 
-cursor-byok is a Cursor model gateway that runs on your machine. It receives Cursor Agent requests, converts them, and forwards them to the OpenAI- or Anthropic-compatible service you configure.
+Cursor Byok is a Cursor model gateway that runs on your machine. It receives Cursor Agent requests, converts them, and forwards them to the OpenAI- or Anthropic-compatible service you configure.
 
 <Callout type="warn" title="Before you start">
-cursor-byok is an independent open-source project and is not affiliated with Cursor or its developers. The software itself is free, but model providers may charge for usage.
+Cursor Byok is an independent open-source project and is not affiliated with Cursor or its developers. The software itself is free, but model providers may charge for usage.
 </Callout>
 
 ## Install and configure
@@ -24,7 +24,7 @@ Download the latest official Cursor from [cursor.com](https://cursor.com) and in
 
 <Step>
 
-### Download and launch cursor-byok
+### Download and launch Cursor Byok
 
 Download the latest release for your operating system from [GitHub Releases](https://github.com/leookun/cursor-byok/releases/latest), then launch cursor-byok.
 
@@ -54,7 +54,7 @@ After completing the configuration for the first time, quit and restart Cursor o
 
 ### Use it in Cursor
 
-Keep cursor-byok running, start a new conversation in Cursor, pick the model you just configured from the model list (do not pick Auto), and start using Agent.
+Keep Cursor Byok running, start a new conversation in Cursor, pick the model you just configured from the model list (do not pick Auto), and start using Agent.
 
 </Step>
 
@@ -84,7 +84,7 @@ The current design goal is coexistence with the official service — there is no
 Cursor client
     │  Agent requests and tool results
     ▼
-cursor-byok local service
+Cursor Byok local service
     │  OpenAI- / Anthropic-compatible requests
     ▼
 Your model API

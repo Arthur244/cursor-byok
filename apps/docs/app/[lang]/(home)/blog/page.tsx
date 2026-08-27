@@ -8,13 +8,13 @@ import { isLanguage, type Language } from '@/lib/i18n';
 const copy: Record<Language, { title: string; description: string; intro: string }> = {
   zh: {
     title: '开发者博客',
-    description: 'cursor-byok 的架构决策、协议实现与开发进展。',
-    intro: '记录 cursor-byok 的架构决策、协议实现和开发进展。',
+    description: 'Cursor Byok 的架构决策、协议实现与开发进展。',
+    intro: '记录 Cursor Byok 的架构决策、协议实现和开发进展。',
   },
   en: {
     title: 'Developer Blog',
-    description: 'Architecture decisions, protocol work, and development progress of cursor-byok.',
-    intro: 'Notes on architecture decisions, protocol work, and development progress of cursor-byok.',
+    description: 'Architecture decisions, protocol work, and development progress of Cursor Byok.',
+    intro: 'Notes on architecture decisions, protocol work, and development progress of Cursor Byok.',
   },
 };
 

@@ -15,20 +15,20 @@ export async function generateMetadata(props: LayoutProps<'/[lang]'>): Promise<M
     return {
       metadataBase: new URL(siteUrl),
       title: {
-        default: 'cursor-byok Docs',
-        template: '%s | cursor-byok',
+        default: 'Cursor Byok Docs',
+        template: '%s | Cursor Byok',
       },
-      description: 'Installation, model configuration, and troubleshooting guide for cursor-byok.',
+      description: 'Installation, model configuration, and troubleshooting guide for Cursor Byok.',
     };
   }
 
   return {
     metadataBase: new URL(siteUrl),
     title: {
-      default: 'cursor-byok 文档',
-      template: '%s | cursor-byok',
+      default: 'Cursor Byok 文档',
+      template: '%s | Cursor Byok',
     },
-    description: 'cursor-byok 的安装、模型配置与故障排查指南。',
+    description: 'Cursor Byok 的安装、模型配置与故障排查指南。',
   };
 }
 

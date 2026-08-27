@@ -11,7 +11,7 @@ import { DesktopDemo } from '@/components/hero/DesktopDemo';
 import { DownloadButton } from '@/components/hero/DownloadButton';
 import { blogSource, formatBlogDate, sortBlogPages } from '@/lib/blog';
 import { formatStars, getRepoStats } from '@/lib/github';
-import { i18n, isLanguage, type Language } from '@/lib/i18n';
+import { isLanguage, type Language } from '@/lib/i18n';
 import { releaseUrl, repositoryUrl } from '@/lib/shared';
 
 const copy: Record<
@@ -38,7 +38,7 @@ const copy: Record<
     subtitle:
       '在本机运行自己的模型网关，用自己的 API Key 接入 OpenAI、Anthropic 兼容服务或自定义端点，完整保留 Cursor Agent 的工具调用、Skills 和 MCP。',
     readDocs: '阅读文档',
-    flow: ['Cursor 客户端', 'cursor-byok 本地服务', '你的模型 API（OpenAI / Anthropic 兼容）'],
+    flow: ['Cursor 客户端', 'Cursor Byok 本地服务', '你的模型 API（OpenAI / Anthropic 兼容）'],
     docsEyebrow: 'DOCUMENTATION',
     docsTitle: '文档',
     viewAll: '查看全部',
@@ -72,7 +72,7 @@ const copy: Record<
     subtitle:
       'Run your own model gateway locally, connect OpenAI- and Anthropic-compatible services or custom endpoints with your own API keys, and keep Cursor Agent tool calling, Skills, and MCP intact.',
     readDocs: 'Read the docs',
-    flow: ['Cursor client', 'cursor-byok local service', 'Your model API (OpenAI / Anthropic compatible)'],
+    flow: ['Cursor client', 'Cursor Byok local service', 'Your model API (OpenAI / Anthropic compatible)'],
     docsEyebrow: 'DOCUMENTATION',
     docsTitle: 'Documentation',
     viewAll: 'View all',
@@ -106,7 +106,7 @@ export default async function HomePage(props: PageProps<'/[lang]'>) {
   if (!isLanguage(lang)) notFound();
 
   const t = copy[lang];
-  const prefix = lang === i18n.defaultLanguage ? '' : `/${lang}`;
+  const prefix = `/${lang}`;
   const posts = sortBlogPages(blogSource.getPages(lang)).slice(0, 3);
   const { stars, version } = await getRepoStats();
 

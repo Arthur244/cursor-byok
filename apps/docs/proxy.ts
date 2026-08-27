@@ -49,5 +49,5 @@ export default function proxy(request: NextRequest, event: NextFetchEvent) {
 }
 
 export const config = {
-  matcher: ['/((?!api|_next|favicon.ico|images/|product-demo/|llms\\.txt|llms-full\\.txt).*)'],
+  matcher: ['/((?!api|_next|favicon.ico|icon.png|images/|product-demo/|llms\\.txt|llms-full\\.txt).*)'],
 };

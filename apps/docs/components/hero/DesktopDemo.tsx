@@ -9,8 +9,8 @@ import styles from './DesktopDemo.module.css';
 const embedQuery = '(min-width: 680px) and (hover: hover)';
 
 const alt: Record<Language, string> = {
-  zh: 'cursor-byok 桌面端数据概览界面',
-  en: 'cursor-byok desktop overview dashboard',
+  zh: 'Cursor Byok 桌面端数据概览界面',
+  en: 'Cursor Byok desktop overview dashboard',
 };
 
 function subscribeEmbedQuery(callback: () => void) {
@@ -60,7 +60,8 @@ export function DesktopDemo({ lang }: { lang: Language }) {
     <div ref={stageRef} className={styles.stage}>
       <div className={styles.halo} aria-hidden />
       <DemoViewport
-        key={`${dark ? 'dark' : 'light'}-${lang}`}
+        // key 含挂载状态:视口变小卸载 iframe 时整体重置,poster 重新显示
+        key={`${dark ? 'dark' : 'light'}-${lang}-${embeddable && mounted ? 'live' : 'poster'}`}
         dark={dark}
         lang={lang}
         mounted={embeddable && mounted}

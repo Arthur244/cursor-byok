@@ -9,8 +9,8 @@ import { blogSource, formatBlogDate } from '@/lib/blog';
 import { i18n, isLanguage, type Language } from '@/lib/i18n';
 
 const copy: Record<Language, { back: string; team: string }> = {
-  zh: { back: '返回开发者博客', team: 'cursor-byok 开发团队' },
-  en: { back: 'Back to Developer Blog', team: 'The cursor-byok team' },
+  zh: { back: '返回开发者博客', team: 'Cursor Byok 开发团队' },
+  en: { back: 'Back to Developer Blog', team: 'The Cursor Byok team' },
 };
 
 export default async function BlogPostPage(props: PageProps<'/[lang]/blog/[slug]'>) {
@@ -21,7 +21,7 @@ export default async function BlogPostPage(props: PageProps<'/[lang]/blog/[slug]
   if (!page) notFound();
 
   const t = copy[lang];
-  const prefix = lang === i18n.defaultLanguage ? '' : `/${lang}`;
+  const prefix = `/${lang}`;
   const MDX = page.data.body;
 
   return (

@@ -3,7 +3,8 @@ import { defineI18n } from 'fumadocs-core/i18n';
 export const i18n = defineI18n({
   defaultLanguage: 'zh',
   languages: ['zh', 'en'],
-  hideLocale: 'default-locale',
+  // 所有语言显式带前缀;未带前缀的访问由中间件按浏览器 Accept-Language 协商后重定向
+  hideLocale: 'never',
 });
 
 export type Language = (typeof i18n)['languages'][number];

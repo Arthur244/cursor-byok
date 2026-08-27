@@ -1,4 +1,4 @@
-export const appName = 'cursor-byok';
+export const appName = 'Cursor Byok';
 export const appDescription = 'Cursor 服务端的开源替代';
 export const docsRoute = '/docs';
 export const docsImageRoute = '/og/docs';

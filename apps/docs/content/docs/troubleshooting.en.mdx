@@ -12,11 +12,11 @@ Go to **Cursor Settings** and click **Initialize CA**. The local CA stays on you
 
 Click **Open terminal to install CA** and follow the terminal prompts to complete system authorization. When done, return to the app and click **I have initialized, refresh**.
 
-If the status does not update, quit cursor-byok completely, restart it, and open the Cursor Settings page again.
+If the status does not update, quit Cursor Byok completely, restart it, and open the Cursor Settings page again.
 
 ## Cannot connect to the local management service
 
-1. Quit and restart cursor-byok completely.
+1. Quit and restart Cursor Byok completely.
 2. Check whether security software is blocking local loopback connections.
 3. If you changed the management service port, reset it to `0` so the app picks an available port at startup.
 4. Launch the app again and refresh the page.
@@ -38,11 +38,11 @@ First confirm all of the following:
 1. The local CA status is healthy.
 2. At least one model configuration is saved.
 3. The model connectivity test passes.
-4. cursor-byok is running.
+4. Cursor Byok is running.
 
 If it still does not work, run the full restart sequence in order:
 
-1. Quit cursor-byok completely from the tray and start it again.
+1. Quit Cursor Byok completely from the tray and start it again.
 2. Quit and restart Cursor completely.
 3. Start a new conversation and refresh the model list.
 4. Pick your own configured model — **do not pick Auto**.
@@ -75,7 +75,7 @@ The model test only verifies basic connectivity. Agent requests also involve lon
 
 If the problem persists, file an issue on [GitHub Issues](https://github.com/leookun/cursor-byok/issues) and include:
 
-- Your operating system and cursor-byok version.
+- Your operating system and Cursor Byok version.
 - The selected model type and request protocol.
 - The redacted server address and error message.
 - Steps to reproduce.

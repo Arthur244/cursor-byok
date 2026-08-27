@@ -26,9 +26,9 @@ export const source = loader({
   i18n,
 });
 
-/** Locale URL prefix segment; empty for the default (hidden) locale. */
+/** Locale URL prefix segment; all locales are explicit (hideLocale: 'never'). */
 function localeSegment(page: (typeof source)['$inferPage']): string | undefined {
-  return page.locale === i18n.defaultLanguage ? undefined : page.locale;
+  return page.locale;
 }
 
 export function getPageImageUrl(page: (typeof source)['$inferPage']) {

@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import { zhCN } from '@fumadocs/language/zh-cn';
 import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
 import { uiTranslations } from 'fumadocs-ui/i18n';
@@ -13,11 +14,16 @@ const navLabels: Record<Language, { docs: string; blog: string; download: string
 
 export function baseOptions(lang: Language): BaseLayoutProps {
   const labels = navLabels[lang];
-  const prefix = lang === i18n.defaultLanguage ? '' : `/${lang}`;
+  const prefix = `/${lang}`;
 
   return {
     nav: {
-      title: appName,
+      title: (
+        <>
+          <Image src="/images/logo.png" alt="" width={20} height={20} className="rounded-[5px]" />
+          {appName}
+        </>
+      ),
     },
     links: [
       {
