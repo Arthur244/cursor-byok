@@ -132,7 +132,7 @@ impl Provider for OpenAiChatProvider {
                 }
                 let Some(choice) = value.get("choices").and_then(Value::as_array).and_then(|values| values.first()) else { continue; };
                 let delta = choice.get("delta").unwrap_or(&Value::Null);
-                if let Some(reasoning_delta) = delta.get("reasoning_content").and_then(Value::as_str).filter(|text| !text.is_empty()) {
+                if let Some(reasoning_delta) = delta.get("reasoning_content").or_else(|| delta.get("reasoning")).and_then(Value::as_str).filter(|text| !text.is_empty()) {
                     if !thinking_open { thinking_open = true; yield ModelEvent::ThinkingStart; }
                     reasoning.push_str(reasoning_delta);
                     yield ModelEvent::ThinkingDelta(reasoning_delta.into());
