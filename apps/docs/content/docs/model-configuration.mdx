@@ -6,6 +6,22 @@ icon: Settings2
 
 每个模型配置都是一个独立的上游通道，可以使用不同服务商、协议、凭据和生成参数。
 
+![编辑模型弹窗](/images/docs/model-edit-zh.png)
+
+## 如何选择类型与协议
+
+按上游模型系列选择，可以避免绝大多数兼容性问题：
+
+| 模型系列 | 模型类型 | 请求协议 |
+| --- | --- | --- |
+| Claude 系列 | **Anthropic** | — |
+| GPT / OpenAI 系列 | **OpenAI** | **Responses API** |
+| 其他所有模型 | **OpenAI** | **Chat Completions API** |
+
+<Callout type="warn" title="GPT 系列务必用 Responses API">
+GPT 系列走 Chat Completions 会丢失提示词缓存，速度和费用都会明显变差。
+</Callout>
+
 ## 必填字段
 
 ### 模型类型

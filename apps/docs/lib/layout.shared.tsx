@@ -1,27 +1,35 @@
 import { zhCN } from '@fumadocs/language/zh-cn';
-import { defineTranslations } from 'fumadocs-core/i18n';
 import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
 import { uiTranslations } from 'fumadocs-ui/i18n';
+import { i18n, type Language } from './i18n';
 import { appName, gitConfig, releaseUrl } from './shared';
 
-export const translations = defineTranslations().extend(uiTranslations()).preset(zhCN());
+export const translations = i18n.translations().extend(uiTranslations()).preset('zh', zhCN());
 
-export function baseOptions(): BaseLayoutProps {
+const navLabels: Record<Language, { docs: string; blog: string; download: string }> = {
+  zh: { docs: '文档', blog: '开发者博客', download: '下载' },
+  en: { docs: 'Docs', blog: 'Blog', download: 'Download' },
+};
+
+export function baseOptions(lang: Language): BaseLayoutProps {
+  const labels = navLabels[lang];
+  const prefix = lang === i18n.defaultLanguage ? '' : `/${lang}`;
+
   return {
     nav: {
       title: appName,
     },
     links: [
       {
-        text: '文档',
-        url: '/docs',
+        text: labels.docs,
+        url: `${prefix}/docs`,
       },
       {
-        text: '开发者博客',
-        url: '/blog',
+        text: labels.blog,
+        url: `${prefix}/blog`,
       },
       {
-        text: '下载',
+        text: labels.download,
         url: releaseUrl,
         external: true,
       },

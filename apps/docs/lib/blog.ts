@@ -1,6 +1,7 @@
 import { loader } from 'fumadocs-core/source';
 import { pageSchema } from 'fumadocs-core/source/schema';
 import { defineCollections } from 'fumadocs-mdx/macro';
+import { htmlLang, i18n, type Language } from './i18n';
 
 const blog = defineCollections({
   type: 'doc',
@@ -11,6 +12,7 @@ const blog = defineCollections({
 export const blogSource = loader({
   baseUrl: '/blog',
   source: blog.toFumadocsSource(),
+  i18n,
 });
 
 export function getBlogDate(path: string): Date {
@@ -19,8 +21,8 @@ export function getBlogDate(path: string): Date {
   return match ? new Date(`${match[1]}T00:00:00Z`) : new Date(0);
 }
 
-export function formatBlogDate(path: string): string {
-  return new Intl.DateTimeFormat('zh-CN', {
+export function formatBlogDate(path: string, lang: Language = i18n.defaultLanguage): string {
+  return new Intl.DateTimeFormat(htmlLang[lang], {
     year: 'numeric',
     month: 'long',
     day: 'numeric',

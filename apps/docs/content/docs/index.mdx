@@ -10,13 +10,21 @@ cursor-byok 是运行在本机的 Cursor 模型网关。它接收 Cursor Agent �
 cursor-byok 是独立开源项目，与 Cursor 及其开发者没有关联。软件本身免费，但模型服务商可能按用量收费。
 </Callout>
 
-## 三步开始使用
+## 安装与配置
 
 <Steps>
 
 <Step>
 
-### 下载并启动
+### 更新 Cursor
+
+从 [cursor.com](https://cursor.com) 下载官方最新版 Cursor，直接覆盖安装，保持客户端为最新版本。
+
+</Step>
+
+<Step>
+
+### 下载并启动 cursor-byok
 
 从 [GitHub Releases](https://github.com/leookun/cursor-byok/releases/latest) 下载与你的操作系统对应的最新版本，然后启动 cursor-byok。
 
@@ -26,7 +34,19 @@ cursor-byok 是独立开源项目，与 Cursor 及其开发者没有关联。软
 
 ### 初始化并配置模型
 
-打开 **Cursor 配置**，按界面提示初始化本地 CA，然后添加模型。填写服务地址、API Key 和模型名称，并运行连通性测试。
+打开 **Cursor 配置**，按界面提示初始化本地 CA，然后添加模型。填写服务地址、API Key 和模型名称，并运行连通性测试，测试通过即可。
+
+![Cursor 配置页面](/images/docs/cursor-config-zh.png)
+
+不同模型如何选择类型与协议，见[模型配置](./model-configuration.mdx)。
+
+</Step>
+
+<Step>
+
+### 首次配置后重启 Cursor
+
+首次完成配置时，完全退出并重新启动一次 Cursor，让模型列表生效。
 
 </Step>
 
@@ -34,19 +54,28 @@ cursor-byok 是独立开源项目，与 Cursor 及其开发者没有关联。软
 
 ### 在 Cursor 中使用
 
-保持 cursor-byok 运行，打开 Cursor，在模型列表中选择刚刚配置的模型，然后开始使用 Agent。
+保持 cursor-byok 运行，在 Cursor 中新开一个对话，从模型列表中选择你刚配置的模型（不要选 Auto），开始使用 Agent。
 
 </Step>
 
 </Steps>
+
+## 与官方账号并存
+
+新版的设计目标是与官方服务并存，不再需要“关服务”“切账号”之类的操作：
+
+- 直接在 Cursor 中登录你自己的账号。如果之前用过旧版生成的 fake 账户，先退出它，再登录自己的账号。
+- 账号有官方额度时，官方模型和本地模型没有使用上的边界，可以随时切换混用。
+- **Auto 走的是官方模型**：账号没有额度时选 Auto 会报错，请手动选择你配置的模型。
+- 插件、代码库索引等 Cursor 功能都可以正常使用。
 
 ## 接下来
 
 <Cards>
   <Card title="安装指南" description="下载、初始化和首次运行。" href="/docs/installation" />
   <Card title="模型配置" description="选择协议并填写上游模型参数。" href="/docs/model-configuration" />
+  <Card title="TAB 服务" description="选择 Cursor Tab 补全接口的连接方式。" href="/docs/tab-service" />
   <Card title="故障排查" description="处理证书、连接与模型测试问题。" href="/docs/troubleshooting" />
-  <Card title="查看源码" description="了解实现或参与项目开发。" href="https://github.com/leookun/cursor-byok" external />
 </Cards>
 
 ## 数据如何流转

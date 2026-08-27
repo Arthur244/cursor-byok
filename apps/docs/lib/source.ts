@@ -3,6 +3,7 @@ import { lucideIconsPlugin } from 'fumadocs-core/source/lucide-icons';
 import { docsContentRoute, docsImageRoute, docsRoute } from './shared';
 import { defineDocs } from 'fumadocs-mdx/macro';
 import { metaSchema, pageSchema } from 'fumadocs-core/source/schema';
+import { i18n } from './i18n';
 
 const docs = defineDocs({
   dir: 'content/docs',
@@ -22,14 +23,22 @@ export const source = loader({
   baseUrl: docsRoute,
   source: docs.toFumadocsSource(),
   plugins: [lucideIconsPlugin()],
+  i18n,
 });
+
+/** Locale URL prefix segment; empty for the default (hidden) locale. */
+function localeSegment(page: (typeof source)['$inferPage']): string | undefined {
+  return page.locale === i18n.defaultLanguage ? undefined : page.locale;
+}
 
 export function getPageImageUrl(page: (typeof source)['$inferPage']) {
   const segments = [...page.slugs, 'image.png'];
 
   return {
     segments,
-    url: '/' + [page.locale, ...docsImageRoute.split('/'), ...segments].filter(Boolean).join('/'),
+    url:
+      '/' +
+      [localeSegment(page), ...docsImageRoute.split('/'), ...segments].filter(Boolean).join('/'),
   };
 }
 
@@ -38,7 +47,9 @@ export function getPageMarkdownUrl(page: (typeof source)['$inferPage']) {
 
   return {
     segments,
-    url: '/' + [page.locale, ...docsContentRoute.split('/'), ...segments].filter(Boolean).join('/'),
+    url:
+      '/' +
+      [localeSegment(page), ...docsContentRoute.split('/'), ...segments].filter(Boolean).join('/'),
   };
 }
 

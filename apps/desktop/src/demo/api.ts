@@ -243,8 +243,9 @@ function createSeries(count: number, step: number, end: number): OverviewTokenUs
     const wave = 0.72 + ((index * 17) % 31) / 50;
     return {
       bucket_start_ms: end - (count - index) * step,
-      input_tokens: Math.round(18_000 * wave),
-      cache_read_tokens: Math.round(62_000 * wave),
+      // input : cache_read = 1 : 99，使默认口径缓存命中率恰为 99%
+      input_tokens: Math.round(800 * wave),
+      cache_read_tokens: Math.round(79_200 * wave),
       cache_write_tokens: Math.round(7_500 * wave),
       output_tokens: Math.round(12_500 * wave),
     };

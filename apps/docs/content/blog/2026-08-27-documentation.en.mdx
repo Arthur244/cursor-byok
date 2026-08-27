@@ -1,0 +1,37 @@
+---
+title: Why We Built a New Documentation Site
+description: Bringing the user guide and development notes back into the repository so docs evolve with the product.
+---
+
+cursor-byok has grown from simple model forwarding into multi-protocol model configuration, tool calling, session observability, and a cross-platform desktop app. Information scattered across release notes and discussion threads is no longer enough for first-time users, and it makes it harder for developers to understand the system's boundaries.
+
+## Documentation is part of the product
+
+The new documentation site lives in the same repository as the application code:
+
+```text
+apps/
+├── desktop/       # Desktop app
+└── docs/          # Documentation site
+    ├── content/docs/
+    └── content/blog/
+```
+
+The user guide answers "how do I use it", while the developer blog records "why it is designed this way". The two kinds of content are maintained separately but share the same build and review pipeline.
+
+## Why Fumadocs
+
+Fumadocs provides the documentation layout, full-text search, code highlighting, table of contents, and the MDX content layer. We only need to maintain product information and visual styling instead of reimplementing generic documentation features.
+
+The docs app stays independent: the desktop app does not take on Next.js or Fumadocs dependencies, and development, builds, and deployments remain separate.
+
+## What we will write about
+
+The developer blog will keep covering:
+
+- Cursor protocol adaptation and model compatibility design.
+- Trade-offs in Agent tool calling and multi-turn conversations.
+- Local storage, observability, and performance work.
+- Cross-platform desktop development and the release process.
+
+These posts describe the current code. We do not keep compatibility notes for implementations that have been removed.
