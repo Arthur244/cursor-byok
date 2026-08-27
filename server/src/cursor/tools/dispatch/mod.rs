@@ -39,9 +39,6 @@ pub(super) async fn start(
     context: &ExecContext,
     store: Option<&Store>,
 ) -> Result<ToolStart> {
-    let normalized_call = normalize_block_until_ms(call)?;
-    let call = normalized_call.as_ref().unwrap_or(call);
-
     if let Some(definition) = dynamic_mcp.get(&call.name) {
         return exec::start_dynamic(runtime, call, definition, context).await;
     }
@@ -53,6 +50,9 @@ pub(super) async fn start(
     if context.task_disabled(call) {
         return local::subagents_disabled(call);
     }
+
+    let normalized_call = normalize_block_until_ms(call)?;
+    let call = normalized_call.as_ref().unwrap_or(call);
 
     match normalized(&call.name).as_str() {
         "shell" | "read" | "delete" | "grep" | "glob" | "readlints" | "task" | "callmcptool"
