@@ -7,9 +7,10 @@ export type RepoStats = {
 
 async function fetchJson(url: string): Promise<Record<string, unknown> | null> {
   try {
+    // 构建期取一次并静态化;数据随每次部署更新,运行时无需 ISR 缓存设施
     const res = await fetch(url, {
       headers: { Accept: 'application/vnd.github+json' },
-      next: { revalidate: 3600 },
+      cache: 'force-cache',
     });
     if (!res.ok) return null;
     return (await res.json()) as Record<string, unknown>;
