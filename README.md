@@ -17,9 +17,9 @@ cursor-byok is a local implementation of Cursor's backend.
 
 </div>
 
-![Connect cursor-byok to a wide range of model APIs](./images/en-brand.png)
+![Connect cursor-byok to a wide range of model APIs](./images/en-brand-1.png)
 
-![cursor-byok dashboard](./images/en-home.png)
+![cursor-byok dashboard](./images/en-home-1.png)
 
 ## About
 
@@ -53,7 +53,7 @@ For complete installation steps, system configuration, and troubleshooting, see 
 
 Model configurations support both OpenAI and Anthropic API protocols. Each model channel can independently define its context window, maximum output tokens, reasoning effort, custom headers, and additional request parameters.
 
-![cursor-byok model settings](./images/en-model.png)
+![cursor-byok model settings](./images/en-model-1.png)
 
 ## How It Works
 
