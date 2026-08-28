@@ -86,10 +86,10 @@ pub(crate) fn failure(call: &ToolCall) -> ToolCompletion {
 
 fn failure_message(name: &str) -> String {
     if normalized(name) == "awaitshell" {
-        return "Tool \"AwaitShell\" is no longer available in this Cursor BYOK version. This call may have been restored from a conversation created by an older version. Treat the tool call as failed and continue using only tools advertised in the current prompt; for background shell work, use the current Shell/background completion flow.".into();
+        return "Tool \"AwaitShell\" is no longer available in this Cursor BYOK version. The model emitted a tool name that is not part of the current advertised tool set. Treat the tool call as failed and continue using only tools advertised in the current prompt; for background shell work, use the current Shell/background completion flow.".into();
     }
     format!(
-        "Tool \"{name}\" is not available in this Cursor BYOK version. It may come from an older conversation or from an unsupported model-generated tool call. Treat the tool call as failed and continue using a tool advertised in the current prompt."
+        "Tool \"{name}\" is not available in this Cursor BYOK version. The model emitted a tool name that is not part of the current advertised tool set. Treat the tool call as failed and continue using a tool advertised in the current prompt."
     )
 }
 
@@ -105,7 +105,7 @@ mod tests {
     use super::*;
 
     fn tool(name: &str) -> ToolCall {
-        let arguments = serde_json::json!({"shell_id": "legacy-shell", "block_until_ms": 30000});
+        let arguments = serde_json::json!({"shell_id": "runtime-shell", "block_until_ms": 30000});
         ToolCall {
             index: 0,
             call_id: "call-1".into(),
@@ -120,7 +120,10 @@ mod tests {
     fn retired_await_shell_is_a_model_visible_failure() {
         let completion = failure(&tool("AwaitShell"));
         assert!(completion.result().is_error);
-        assert!(completion.result().content.contains("older version"));
+        assert!(completion
+            .result()
+            .content
+            .contains("current advertised tool set"));
         assert!(completion
             .result()
             .content
