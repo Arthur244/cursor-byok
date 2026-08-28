@@ -54,8 +54,10 @@ pub(super) async fn start(
     let call = normalized_call.as_ref().unwrap_or(call);
 
     match normalized(&call.name).as_str() {
-        "shell" | "bash" | "read" | "delete" | "grep" | "glob" | "readlints" | "task" | "callmcptool"
-        | "fetchmcpresource" | "getmcptools" => exec::start(runtime, call, context).await,
+        "shell" | "bash" | "read" | "delete" | "grep" | "glob" | "readlints" | "task"
+        | "callmcptool" | "fetchmcpresource" | "getmcptools" => {
+            exec::start(runtime, call, context).await
+        }
         "write" | "strreplace" | "editnotebook" => edit::start(runtime, call, context).await,
         "askquestion" | "websearch" | "webfetch" | "switchmode" | "createplan"
         | "generateimage" => interaction::start(runtime, call).await,
@@ -66,7 +68,7 @@ pub(super) async fn start(
 }
 
 fn normalize_block_until_ms(call: &ToolCall) -> Result<Option<ToolCall>> {
-    if normalized(&call.name) != "shell" {
+    if !is_shell_tool(&call.name) {
         return Ok(None);
     }
     let Some(value) = call.arguments.get("block_until_ms") else {
@@ -133,6 +135,10 @@ pub(super) async fn resume_interaction(
     interaction::resume(results, search, fetch, pending, response).await
 }
 
+fn is_shell_tool(name: &str) -> bool {
+    matches!(normalized(name).as_str(), "shell" | "bash")
+}
+
 pub(super) fn normalized(name: &str) -> String {
     name.chars()
         .filter(|character| character.is_ascii_alphanumeric())
@@ -159,6 +165,18 @@ mod tests {
     fn shell_accepts_integer_valued_float_timeout() {
         let call = tool(
             "Shell",
+            serde_json::json!({"command": "echo ok", "block_until_ms": 45_000.0}),
+        );
+
+        let call = normalize_block_until_ms(&call).unwrap().unwrap();
+
+        assert_eq!(call.arguments["block_until_ms"].as_i64(), Some(45_000));
+    }
+
+    #[test]
+    fn bash_accepts_integer_valued_float_timeout() {
+        let call = tool(
+            "Bash",
             serde_json::json!({"command": "echo ok", "block_until_ms": 45_000.0}),
         );
 

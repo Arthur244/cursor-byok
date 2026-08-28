@@ -42,6 +42,7 @@ pub fn fail(handle: &CursorSessionHandle, error: &Error) -> Result<()> {
 }
 
 pub fn cancel(handle: &CursorSessionHandle) -> Result<()> {
+    handle.cancel();
     // Always close the output even if encoding fails, to prevent silent hangs.
     match encode_error_end_stream(&ConnectStreamError {
         code: ConnectCode::Canceled,
