@@ -33,6 +33,8 @@ pub(crate) async fn send_with_retry<F>(
     policy: RetryPolicy,
     cancellation: &CancellationToken,
     recorder: Option<&CallRecorder>,
+    request_headers: serde_json::Value,
+    request_body: &serde_json::Value,
 ) -> Result<Attempt>
 where
     F: Fn() -> reqwest::RequestBuilder,
@@ -43,19 +45,24 @@ where
             response = build().send() => response,
         }?;
         if let Some(recorder) = recorder {
-            recorder.response_headers(response.status().as_u16()).await?;
+            recorder
+                .response_headers(response.status().as_u16())
+                .await?;
         }
         if response.status().is_success() {
             return Ok(Attempt::Response(response));
         }
         let status = response.status();
         let bytes = response.bytes().await?;
-        if let Some(recorder) = recorder {
-            recorder.response_chunk(&bytes).await?;
-        }
+        let error = Error::Provider(format!(
+            "{label} {status}: {}",
+            String::from_utf8_lossy(&bytes)
+        ));
         if attempt == policy.retries {
-            let text = String::from_utf8_lossy(&bytes);
-            return Err(Error::Provider(format!("{label} {status}: {text}")));
+            if let Some(recorder) = recorder {
+                recorder.failed(&error).await?;
+            }
+            return Err(error);
         }
         tracing::warn!(
             provider = label,
@@ -65,6 +72,11 @@ where
             delay_ms = policy.delay.as_millis(),
             "provider returned a non-success status, retrying"
         );
+        if let Some(recorder) = recorder {
+            recorder
+                .retry(&error, request_headers.clone(), request_body)
+                .await?;
+        }
         tokio::select! {
             _ = cancellation.cancelled() => return Ok(Attempt::Cancelled),
             _ = tokio::time::sleep(policy.delay) => {}
@@ -138,6 +150,8 @@ mod tests {
             fast(5),
             &CancellationToken::new(),
             None,
+            serde_json::json!({}),
+            &serde_json::json!({}),
         )
         .await
         .unwrap();
@@ -159,6 +173,8 @@ mod tests {
             fast(5),
             &CancellationToken::new(),
             None,
+            serde_json::json!({}),
+            &serde_json::json!({}),
         )
         .await
         .unwrap_err();
@@ -184,6 +200,8 @@ mod tests {
             },
             &CancellationToken::new(),
             None,
+            serde_json::json!({}),
+            &serde_json::json!({}),
         )
         .await
         .unwrap();
@@ -214,6 +232,8 @@ mod tests {
             },
             &cancellation,
             None,
+            serde_json::json!({}),
+            &serde_json::json!({}),
         )
         .await
         .unwrap();
@@ -232,6 +252,8 @@ mod tests {
             fast(5),
             &CancellationToken::new(),
             None,
+            serde_json::json!({}),
+            &serde_json::json!({}),
         )
         .await
         .unwrap();

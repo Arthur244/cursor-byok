@@ -16,7 +16,8 @@ use crate::{
 };
 
 use super::{
-    apply_openai_prompt_cache_key, merge_extra_params, recorder::recorded_headers,
+    apply_openai_prompt_cache_key, merge_extra_params,
+    recorder::recorded_headers,
     retry::{send_with_retry, Attempt, RetryPolicy},
     CallRecorder, FinishReason, ModelEvent, Provider, ProviderStream,
 };
@@ -84,8 +85,9 @@ impl Provider for OpenAiChatProvider {
             apply_model(&mut body, &request.model, config.max_output_tokens)?;
             merge_extra_params(&mut body, &request.model.extra_params)?;
             apply_openai_prompt_cache_key(&mut body, &request.model.model_id)?;
+            let request_headers = recorded_headers(&config, &[("content-type", "application/json")]);
             if let Some(recorder) = &recorder {
-                recorder.request(recorded_headers(&config, &[("content-type", "application/json")]), &body).await?;
+                recorder.request(request_headers.clone(), &body).await?;
             }
             let attempt = send_with_retry(
                 "OpenAI Chat",
@@ -94,6 +96,8 @@ impl Provider for OpenAiChatProvider {
                 RetryPolicy::default(),
                 &cancellation,
                 recorder.as_ref(),
+                request_headers,
+                &body,
             ).await?;
             let Attempt::Response(response) = attempt else { return };
             yield ModelEvent::Start { model_call_id: call_id };

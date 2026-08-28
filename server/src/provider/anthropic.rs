@@ -82,8 +82,12 @@ impl Provider for AnthropicProvider {
             }
             apply_model(&mut body, &request.model)?;
             merge_extra_params(&mut body, &request.model.extra_params)?;
+            let request_headers = recorded_headers(
+                &config,
+                &[("content-type", "application/json"), ("anthropic-version", "2023-06-01")],
+            );
             if let Some(recorder) = &recorder {
-                recorder.request(recorded_headers(&config, &[("content-type", "application/json"), ("anthropic-version", "2023-06-01")]), &body).await?;
+                recorder.request(request_headers.clone(), &body).await?;
             }
             let attempt = send_with_retry(
                 "Anthropic",
@@ -94,6 +98,8 @@ impl Provider for AnthropicProvider {
                 RetryPolicy::default(),
                 &cancellation,
                 recorder.as_ref(),
+                request_headers,
+                &body,
             ).await?;
             let Attempt::Response(response) = attempt else { return };
             yield ModelEvent::Start { model_call_id: call_id };
