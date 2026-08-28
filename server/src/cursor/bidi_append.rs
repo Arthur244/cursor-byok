@@ -65,7 +65,6 @@ impl DecodedAppend {
                 if matches!(
                     action.action.as_ref(),
                     Some(agent::conversation_action::Action::CancelAction(_))
-                        | Some(agent::conversation_action::Action::UserMessageAction(_))
                 )
         )
     }

@@ -14,7 +14,9 @@ use crate::{
         presentation::Presentation,
         prompting::PromptCompiler,
         proto::agent::v1 as pb,
-        request::CursorRunContext,
+        request::{
+            compile_injection, compile_user_message_action, CursorRunContext, RuntimeAction,
+        },
         tools::{
             codec,
             result::{ToolCompletion, ToolResultReceiver},
@@ -40,7 +42,7 @@ pub struct CursorSession {
     results: ToolResultReceiver,
     checkpoint: CheckpointBuilder,
     tool_runtime: CursorToolRuntime,
-    runtime_actions: mpsc::UnboundedReceiver<pb::InjectContextAction>,
+    runtime_actions: mpsc::UnboundedReceiver<RuntimeAction>,
     compiler: PromptCompiler,
     blob_sync: BlobSynchronizer,
     injection_ids: HashSet<String>,
@@ -52,12 +54,20 @@ struct PendingInjection {
     delivery_batch_id: String,
 }
 
+struct InjectionState<'a> {
+    active_round: Option<&'a ToolRoundId>,
+    active_tool_calls: &'a HashSet<String>,
+    completions: &'a HashMap<String, ToolCompletion>,
+    interrupted_rounds: &'a mut HashSet<ToolRoundId>,
+    interrupted_tool_calls: &'a mut HashSet<String>,
+}
+
 pub(crate) struct CursorSessionRuntime {
     pub tools: ToolDispatcher,
     pub results: ToolResultReceiver,
     pub checkpoint: CheckpointBuilder,
     pub tool_runtime: CursorToolRuntime,
-    pub runtime_actions: mpsc::UnboundedReceiver<pb::InjectContextAction>,
+    pub runtime_actions: mpsc::UnboundedReceiver<RuntimeAction>,
     pub compiler: PromptCompiler,
     pub blob_sync: BlobSynchronizer,
 }
@@ -170,17 +180,30 @@ impl CursorSession {
                 Input::CompletionResult(None) => {
                     return Err(Error::Protocol("tool result channel closed".into()));
                 }
-                Input::RuntimeAction(Some(action)) => {
-                    self.forward_injection(
-                        *action,
-                        active_round.as_ref(),
-                        &active_tool_calls,
-                        &completions,
-                        &mut interrupted_rounds,
-                        &mut interrupted_tool_calls,
-                    )
-                    .await?;
-                }
+                Input::RuntimeAction(Some(action)) => match *action {
+                    RuntimeAction::Inject(action) => {
+                        self.forward_injection(
+                            action,
+                            active_round.as_ref(),
+                            &active_tool_calls,
+                            &completions,
+                            &mut interrupted_rounds,
+                            &mut interrupted_tool_calls,
+                        )
+                        .await?;
+                    }
+                    RuntimeAction::UserMessage(action) => {
+                        self.forward_user_message(
+                            action,
+                            active_round.as_ref(),
+                            &active_tool_calls,
+                            &completions,
+                            &mut interrupted_rounds,
+                            &mut interrupted_tool_calls,
+                        )
+                        .await?;
+                    }
+                },
                 Input::RuntimeAction(None) => {
                     return Err(Error::Protocol("runtime action channel closed".into()));
                 }
@@ -679,6 +702,41 @@ impl CursorSession {
         Ok(dispatched.completion)
     }
 
+    async fn forward_user_message(
+        &mut self,
+        action: pb::UserMessageAction,
+        active_round: Option<&ToolRoundId>,
+        active_tool_calls: &HashSet<String>,
+        completions: &HashMap<String, ToolCompletion>,
+        interrupted_rounds: &mut HashSet<ToolRoundId>,
+        interrupted_tool_calls: &mut HashSet<String>,
+    ) -> Result<()> {
+        let user_message = action.user_message.clone().ok_or_else(|| {
+            Error::Protocol("Cursor user message action has no UserMessage".into())
+        })?;
+        let injection_id = format!("user-message:{}", user_message.message_id);
+        let message = compile_user_message_action(
+            &action,
+            self.context.mode,
+            &self.compiler,
+            &self.blob_sync,
+        )
+        .await?;
+        self.queue_injection(
+            injection_id,
+            Some(user_message),
+            message,
+            InjectionState {
+                active_round,
+                active_tool_calls,
+                completions,
+                interrupted_rounds,
+                interrupted_tool_calls,
+            },
+        )
+        .await
+    }
+
     async fn forward_injection(
         &mut self,
         action: pb::InjectContextAction,
@@ -714,14 +772,30 @@ impl CursorSession {
             }
             _ => None,
         };
-        let message = crate::cursor::request::compile_injection(
-            &action,
-            self.context.mode,
-            &self.compiler,
-            &self.blob_sync,
+        let message =
+            compile_injection(&action, self.context.mode, &self.compiler, &self.blob_sync).await?;
+        self.queue_injection(
+            action.injection_id,
+            user_message,
+            message,
+            InjectionState {
+                active_round,
+                active_tool_calls,
+                completions,
+                interrupted_rounds,
+                interrupted_tool_calls,
+            },
         )
-        .await?;
-        let injection_id = action.injection_id;
+        .await
+    }
+
+    async fn queue_injection(
+        &mut self,
+        injection_id: String,
+        user_message: Option<pb::UserMessage>,
+        message: crate::model::CanonicalMessage,
+        state: InjectionState<'_>,
+    ) -> Result<()> {
         let delivery_batch_id = injection_id.clone();
         self.injection_ids.insert(injection_id.clone());
         self.pending_injections.insert(
@@ -733,14 +807,15 @@ impl CursorSession {
         );
         self.handle
             .emit(&interaction::context_injection_queued(injection_id.clone()))?;
-        interrupted_tool_calls.extend(
-            active_tool_calls
+        state.interrupted_tool_calls.extend(
+            state
+                .active_tool_calls
                 .iter()
-                .filter(|call_id| !completions.contains_key(*call_id))
+                .filter(|call_id| !state.completions.contains_key(*call_id))
                 .cloned(),
         );
-        if let Some(round_id) = active_round {
-            interrupted_rounds.insert(round_id.clone());
+        if let Some(round_id) = state.active_round {
+            state.interrupted_rounds.insert(round_id.clone());
         }
         self.interrupt_execs().await;
         if self
@@ -780,7 +855,7 @@ enum Input {
     Event(Option<ClientEvent>),
     Completion(ToolCompletion),
     CompletionResult(Option<Result<ToolCompletion>>),
-    RuntimeAction(Option<Box<pb::InjectContextAction>>),
+    RuntimeAction(Option<Box<RuntimeAction>>),
     CheckpointFailure(Option<Error>),
 }
 

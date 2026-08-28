@@ -86,7 +86,7 @@ export interface LegacyModelImportResult {
 
 export interface ModelConnectivityResult {
   duration_ms: number;
-  first_text_ms: number | null;
+  first_valid_response_ms: number | null;
   output_tokens: number;
   tokens_per_second: number;
   tokens_estimated: boolean;
@@ -197,6 +197,7 @@ export interface LlmCall {
   created_at_ms: number;
   ttfb_ms: number | null;
   ttft_ms: number | null;
+  ttfr_ms: number | null;
   duration_ms: number | null;
   input_tokens: number | null;
   output_tokens: number | null;

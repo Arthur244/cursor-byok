@@ -55,6 +55,7 @@ const calls: LlmCall[] = Array.from({ length: 24 }, (_, index) => {
     finish_reason: failed ? null : "stop",
     created_at_ms: FIXED_NOW - index * 3 * 60_000,
     ttfb_ms: 210 + index * 13,
+    ttfr_ms: 290 + index * 15,
     ttft_ms: 370 + index * 17,
     duration_ms: failed ? 812 : 1_420 + index * 71,
     input_tokens: 4_800 + index * 337,
@@ -116,7 +117,7 @@ export function installDemoApi() {
     }
     if (path === "/models/import-v0049") return json({ imported: 0, skipped: 0, total: 0 });
     if (/^\/models\/[^/]+\/test\/[^/]+$/.test(path) && method === "POST") {
-      return json({ duration_ms: 1_284, first_text_ms: 418, output_tokens: 42, tokens_per_second: 38.6, tokens_estimated: false, output: "Mock connectivity test passed." });
+      return json({ duration_ms: 1_284, first_valid_response_ms: 418, output_tokens: 42, tokens_per_second: 38.6, tokens_estimated: false, output: "Mock connectivity test passed." });
     }
     if (/^\/models\/[^/]+\/test\/[^/]+$/.test(path) || /^\/models\/[^/]+$/.test(path)) {
       return method === "DELETE" ? empty() : json(models[0]);

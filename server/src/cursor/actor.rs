@@ -44,7 +44,8 @@ impl CursorActor {
         tokio::spawn(async move {
             let mut inbox = OrderedInbox::starting_at(next_append_seqno);
             let (results_tx, results_rx) = tool_result_channel();
-            let (runtime_actions_tx, runtime_actions_rx) = mpsc::unbounded_channel();
+            let (runtime_actions_tx, runtime_actions_rx) =
+                mpsc::unbounded_channel::<super::request::RuntimeAction>();
             let tool_runtime = CursorToolRuntime::default();
             let context_sync =
                 RequestContextSynchronizer::new(handle.clone(), dependencies.store.clone());
@@ -375,10 +376,21 @@ impl CursorActor {
                                         ),
                                     ) => match action.action {
                                         Some(
-                                            pb::conversation_action::Action::UserMessageAction(_),
+                                            pb::conversation_action::Action::UserMessageAction(
+                                                action,
+                                            ),
                                         ) => {
-                                            handle.mark_conversation_cancelled();
-                                            handle.cancel();
+                                            if runtime_actions_tx
+                                                .send(super::request::RuntimeAction::UserMessage(
+                                                    action,
+                                                ))
+                                                .is_err()
+                                            {
+                                                results_tx.send_error(crate::Error::Protocol(
+                                                    "UserMessageAction arrived without an active Run"
+                                                        .into(),
+                                                ));
+                                            }
                                         }
                                         Some(pb::conversation_action::Action::CancelAction(_)) => {
                                             handle.mark_conversation_cancelled();
@@ -389,7 +401,10 @@ impl CursorActor {
                                                 action,
                                             ),
                                         ) => {
-                                            if runtime_actions_tx.send(action).is_err() {
+                                            if runtime_actions_tx
+                                                .send(super::request::RuntimeAction::Inject(action))
+                                                .is_err()
+                                            {
                                                 results_tx.send_error(crate::Error::Protocol(
                                                     "InjectContextAction arrived without an active Run"
                                                         .into(),

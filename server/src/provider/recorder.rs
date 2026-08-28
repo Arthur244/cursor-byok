@@ -14,7 +14,7 @@ use crate::{
     Result,
 };
 
-use super::{FinishReason, ModelEvent};
+use super::{is_valid_response_event, FinishReason, ModelEvent};
 
 pub(crate) fn recorded_headers(
     config: &crate::config::ProviderConfig,
@@ -56,6 +56,7 @@ struct AttemptState {
     next_chunk: AtomicI64,
     chunks: ChunkBuffer,
     first_text_recorded: AtomicBool,
+    first_valid_response_recorded: AtomicBool,
 }
 
 impl AttemptState {
@@ -66,6 +67,7 @@ impl AttemptState {
             next_chunk: AtomicI64::new(0),
             chunks: ChunkBuffer::default(),
             first_text_recorded: AtomicBool::new(false),
+            first_valid_response_recorded: AtomicBool::new(false),
         }
     }
 }
@@ -176,8 +178,29 @@ impl CallRecorder {
     }
 
     pub async fn event(&self, event: &ModelEvent) -> Result<()> {
+        let attempt = self.inner.attempt.lock().await;
+        if is_valid_response_event(event)
+            && attempt
+                .first_valid_response_recorded
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+        {
+            if let Err(error) = self
+                .inner
+                .store
+                .record_llm_first_valid_response(&attempt.call_id, elapsed_ms(attempt.started))
+                .await
+            {
+                attempt
+                    .first_valid_response_recorded
+                    .store(false, Ordering::Release);
+                return Err(error);
+            }
+        }
+        drop(attempt);
+
         match event {
-            ModelEvent::TextDelta(_) => {
+            ModelEvent::TextDelta(delta) if !delta.trim().is_empty() => {
                 let attempt = self.inner.attempt.lock().await;
                 if attempt
                     .first_text_recorded
@@ -468,6 +491,54 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    #[tokio::test]
+    async fn first_valid_response_includes_empty_text_and_reasoning_events() {
+        let store = Store::connect("sqlite::memory:").await.unwrap();
+        let recorder = test_recorder(&store, "first-valid-response-call", false).await;
+
+        recorder
+            .event(&ModelEvent::Start {
+                model_call_id: "call".into(),
+            })
+            .await
+            .unwrap();
+        recorder.event(&ModelEvent::TextStart).await.unwrap();
+        recorder
+            .event(&ModelEvent::TextDelta(String::new()))
+            .await
+            .unwrap();
+
+        let call = store
+            .llm_call("first-valid-response-call")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(call.ttfr_ms.is_some());
+        assert!(call.ttft_ms.is_none());
+
+        recorder
+            .event(&ModelEvent::TextDelta("text".into()))
+            .await
+            .unwrap();
+        let call = store
+            .llm_call("first-valid-response-call")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(call.ttft_ms.is_some());
+
+        recorder
+            .event(&ModelEvent::ThinkingDelta("reasoning".into()))
+            .await
+            .unwrap();
+        let call = store
+            .llm_call("first-valid-response-call")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(call.first_valid_response_at_ms.is_some());
     }
 
     #[tokio::test]

@@ -207,7 +207,7 @@ async fn client_heartbeat_returns_a_server_protocol_heartbeat() {
 }
 
 #[tokio::test]
-async fn runtime_user_message_action_aborts_active_exec_before_canceled_end_stream() {
+async fn runtime_cancel_action_aborts_active_exec_before_canceled_end_stream() {
     let (_directory, store) = fixtures::temp_store().await;
     let provider = fake_provider::FakeProvider::default();
     provider.push(vec![
@@ -281,7 +281,7 @@ async fn runtime_user_message_action_aborts_active_exec_before_canceled_end_stre
     handle
         .command(CursorCommand::Append {
             seqno: append_seqno,
-            message: Box::new(runtime_user_message()),
+            message: Box::new(runtime_cancel_action()),
         })
         .await
         .unwrap();
@@ -311,6 +311,92 @@ async fn runtime_user_message_action_aborts_active_exec_before_canceled_end_stre
         }
     }
     assert_eq!(output.recv().await, None);
+}
+
+#[tokio::test]
+async fn runtime_user_message_action_interrupts_and_continues_with_new_message() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    provider.push_pending();
+    provider.push(text_response("continued after user interruption"));
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = CursorSessionRegistry::new(
+        store,
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+        Default::default(),
+    );
+    let handle = registry
+        .get_or_create("user-message-request")
+        .await
+        .unwrap();
+    let mut output = handle.subscribe();
+    handle
+        .command(CursorCommand::Append {
+            seqno: 0,
+            message: Box::new(client_run_for(
+                "user-message-request",
+                "user-message-conversation",
+            )),
+        })
+        .await
+        .unwrap();
+
+    let mut append_seqno = 1;
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    while provider.requests().is_empty() {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "provider did not start"
+        );
+        if let Ok(Some(frame)) =
+            tokio::time::timeout(std::time::Duration::from_millis(20), output.recv()).await
+        {
+            let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+            if flags & connect::END_STREAM_FLAG != 0 {
+                panic!("initial run ended: {}", String::from_utf8_lossy(&payload));
+            }
+            acknowledge_kv(&handle, &mut append_seqno, &frame).await;
+        }
+    }
+    handle
+        .command(CursorCommand::Append {
+            seqno: append_seqno,
+            message: Box::new(runtime_user_message()),
+        })
+        .await
+        .unwrap();
+
+    let mut saw_continued = false;
+    let mut append_seqno = append_seqno + 1;
+    loop {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(5), output.recv())
+            .await
+            .unwrap()
+            .expect("RunSSE closed before successful EndStream");
+        let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+        if flags & connect::END_STREAM_FLAG != 0 {
+            assert_eq!(payload.as_ref(), b"{}");
+            break;
+        }
+        let server = pb::AgentServerMessage::decode(payload).unwrap();
+        if let Some(pb::agent_server_message::Message::InteractionUpdate(update)) = server.message {
+            if let Some(pb::interaction_update::Message::TextDelta(delta)) = update.message {
+                saw_continued |= delta.text.contains("continued after user interruption");
+            }
+        }
+        acknowledge_kv(&handle, &mut append_seqno, &frame).await;
+    }
+    assert!(saw_continued);
+    assert!(!handle.cancellation().is_cancelled());
+    assert_eq!(provider.requests().len(), 2);
+    let history = serde_json::to_string(&provider.requests()[1].history).unwrap();
+    assert!(history.contains("queued follow-up"));
 }
 
 #[tokio::test]
@@ -1322,6 +1408,19 @@ fn kv_ack(id: u32) -> pb::AgentClientMessage {
                 message: Some(pb::kv_client_message::Message::SetBlobResult(
                     pb::SetBlobResult { error: None },
                 )),
+            },
+        )),
+    }
+}
+
+fn runtime_cancel_action() -> pb::AgentClientMessage {
+    pb::AgentClientMessage {
+        message: Some(pb::agent_client_message::Message::ConversationAction(
+            pb::ConversationAction {
+                action: Some(pb::conversation_action::Action::CancelAction(
+                    pb::CancelAction::default(),
+                )),
+                ..Default::default()
             },
         )),
     }
