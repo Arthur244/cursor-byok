@@ -10,7 +10,7 @@ use cursor_server::{
 
 fn tool(name: &str) -> ToolCall {
     let arguments = serde_json::json!({
-        "shell_id": "legacy-shell",
+        "shell_id": "runtime-shell",
         "block_until_ms": 30_000
     });
     ToolCall {
@@ -48,7 +48,7 @@ async fn dispatch(
 }
 
 #[tokio::test]
-async fn resumed_await_shell_becomes_a_failed_tool_result_instead_of_a_protocol_error() {
+async fn await_shell_emitted_during_active_run_becomes_a_failed_tool_result() {
     let dispatched = dispatch("AwaitShell").await.unwrap();
 
     assert_eq!(
@@ -58,7 +58,10 @@ async fn resumed_await_shell_becomes_a_failed_tool_result_instead_of_a_protocol_
     );
     let completion = dispatched.completion.expect("compatibility completion");
     assert!(completion.result().is_error);
-    assert!(completion.result().content.contains("older version"));
+    assert!(completion
+        .result()
+        .content
+        .contains("current advertised tool set"));
 }
 
 #[tokio::test]
