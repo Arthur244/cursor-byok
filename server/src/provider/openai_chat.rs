@@ -16,8 +16,9 @@ use crate::{
 };
 
 use super::{
-    apply_openai_prompt_cache_key, merge_extra_params, recorder::recorded_headers, CallRecorder,
-    FinishReason, ModelEvent, Provider, ProviderStream,
+    apply_openai_prompt_cache_key, merge_extra_params, recorder::recorded_headers,
+    retry::{send_with_retry, Attempt, RetryPolicy},
+    CallRecorder, FinishReason, ModelEvent, Provider, ProviderStream,
 };
 
 #[derive(Default)]
@@ -86,33 +87,15 @@ impl Provider for OpenAiChatProvider {
             if let Some(recorder) = &recorder {
                 recorder.request(recorded_headers(&config, &[("content-type", "application/json")]), &body).await?;
             }
-            let request = client.post(&config.request_url)
-                .bearer_auth(&config.api_key).headers(config.custom_headers.clone()).json(&body).send();
-            let response = tokio::select! {
-                _ = cancellation.cancelled() => return,
-                response = request => response,
-            };
-            let response = match response {
-                Ok(r) => {
-                    tracing::debug!(status = r.status().as_u16(), "OpenAI Chat HTTP response received");
-                    r
-                }
-                Err(e) => {
-                    tracing::debug!(error = %e, "OpenAI Chat HTTP request failed");
-                    Err(Error::from(e))?
-                }
-            };
-            if let Some(recorder) = &recorder {
-                recorder.response_headers(response.status().as_u16()).await?;
-            }
-            if !response.status().is_success() {
-                let status = response.status();
-                let bytes = response.bytes().await?;
-                if let Some(recorder) = &recorder { recorder.response_chunk(&bytes).await?; }
-                let text = String::from_utf8_lossy(&bytes);
-                Err(Error::Provider(format!("OpenAI Chat {status}: {text}")))?;
-                return;
-            }
+            let attempt = send_with_retry(
+                "OpenAI Chat",
+                || client.post(&config.request_url)
+                    .bearer_auth(&config.api_key).headers(config.custom_headers.clone()).json(&body),
+                RetryPolicy::default(),
+                &cancellation,
+                recorder.as_ref(),
+            ).await?;
+            let Attempt::Response(response) = attempt else { return };
             yield ModelEvent::Start { model_call_id: call_id };
             let chunk_recorder = recorder.clone();
             let chunks = response.bytes_stream()

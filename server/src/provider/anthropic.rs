@@ -11,8 +11,10 @@ use crate::{
 };
 
 use super::{
-    merge_extra_params, recorder::recorded_headers, CallRecorder, FinishReason, ModelEvent,
-    Provider, ProviderStream,
+    merge_extra_params,
+    recorder::recorded_headers,
+    retry::{send_with_retry, Attempt, RetryPolicy},
+    CallRecorder, FinishReason, ModelEvent, Provider, ProviderStream,
 };
 
 const DEFAULT_MAX_OUTPUT_TOKENS: u64 = 65_000;
@@ -83,25 +85,17 @@ impl Provider for AnthropicProvider {
             if let Some(recorder) = &recorder {
                 recorder.request(recorded_headers(&config, &[("content-type", "application/json"), ("anthropic-version", "2023-06-01")]), &body).await?;
             }
-            let request = client.post(&config.request_url)
-                .header("x-api-key", &config.api_key).header("anthropic-version", "2023-06-01")
-                .headers(config.custom_headers.clone())
-                .json(&body).send();
-            let response = tokio::select! {
-                _ = cancellation.cancelled() => return,
-                response = request => response,
-            };
-            let response = response?;
-            if let Some(recorder) = &recorder {
-                recorder.response_headers(response.status().as_u16()).await?;
-            }
-            if !response.status().is_success() {
-                let status = response.status(); let bytes = response.bytes().await?;
-                if let Some(recorder) = &recorder { recorder.response_chunk(&bytes).await?; }
-                let text = String::from_utf8_lossy(&bytes);
-                Err(Error::Provider(format!("Anthropic {status}: {text}")))?;
-                return;
-            }
+            let attempt = send_with_retry(
+                "Anthropic",
+                || client.post(&config.request_url)
+                    .header("x-api-key", &config.api_key).header("anthropic-version", "2023-06-01")
+                    .headers(config.custom_headers.clone())
+                    .json(&body),
+                RetryPolicy::default(),
+                &cancellation,
+                recorder.as_ref(),
+            ).await?;
+            let Attempt::Response(response) = attempt else { return };
             yield ModelEvent::Start { model_call_id: call_id };
             let chunk_recorder = recorder.clone();
             let chunks = response.bytes_stream()
