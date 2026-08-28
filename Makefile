@@ -30,6 +30,13 @@ build-docs:
 build-server:
 	cargo build --release --package cursor-server --bin cursor-server
 
+ifeq ($(OS),Windows_NT)
+$(LOCAL_TAURI_SIGNING_KEY):
+	@powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(dir $@)' | Out-Null; & '$(CURDIR)/apps/desktop/node_modules/.bin/tauri.cmd' signer generate --ci --write-keys '$@'"
+
+build-desktop: $(LOCAL_TAURI_SIGNING_KEY)
+	@set "TAURI_SIGNING_PRIVATE_KEY=$(LOCAL_TAURI_SIGNING_KEY)" && set "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=" && npm --prefix apps/desktop run tauri:build -- --bundles nsis
+else
 $(LOCAL_TAURI_SIGNING_KEY):
 	@install -d -m 700 "$(dir $@)"
 	@apps/desktop/node_modules/.bin/tauri signer generate --ci --write-keys "$@" >/dev/null
@@ -37,6 +44,7 @@ $(LOCAL_TAURI_SIGNING_KEY):
 
 build-desktop: $(LOCAL_TAURI_SIGNING_KEY)
 	TAURI_SIGNING_PRIVATE_KEY="$(LOCAL_TAURI_SIGNING_KEY)" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="" npm --prefix apps/desktop run tauri:build
+endif
 
 build-docker:
 	docker build --tag cursor-byok:local .
