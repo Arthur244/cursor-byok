@@ -403,18 +403,11 @@ fn gate_mcp(tool: &mut pb::McpToolCall) {
                 text.text = truncate_text("MCP text", &next, remaining_text);
                 remaining_text = remaining_text.saturating_sub(text.text.len());
             }
-            Some(pb::mcp_tool_result_content_item::Content::Image(image))
-                if image.data.len() > MCP_BINARY_LIMIT =>
-            {
-                let original = image.data.len();
-                image.data.truncate(MCP_BINARY_LIMIT);
-                notices.push(truncation_notice(
-                    "MCP image data",
-                    MCP_BINARY_LIMIT,
-                    image.data.len(),
-                    original,
-                ));
-            }
+            // MCP images are sent to the client as inline binary data. Truncating
+            // an encoded image at an arbitrary byte boundary corrupts the image
+            // and makes the client's image/screenshot fallback fail. The model
+            // receives only the textual MCP summary below, which is bounded by
+            // MCP_TEXT_LIMIT, so the image does not need this text-result gate.
             _ => {}
         }
         content.push(item);
@@ -874,6 +867,49 @@ mod tests {
             Some(pb::mcp_tool_result_content_item::Content::Text(text))
                 if text.text.contains("MCP content items exceeded")
         )));
+    }
+
+    #[test]
+    fn mcp_images_are_not_truncated_at_an_invalid_binary_boundary() {
+        let image_data = (0..(MCP_BINARY_LIMIT + 1))
+            .map(|value| (value % 251) as u8)
+            .collect::<Vec<_>>();
+        let original_image_data = image_data.clone();
+        let mut tool = pb::tool_call::Tool::McpToolCall(pb::McpToolCall {
+            result: Some(pb::McpToolResult {
+                result: Some(pb::mcp_tool_result::Result::Success(pb::McpSuccess {
+                    content: vec![pb::McpToolResultContentItem {
+                        content: Some(pb::mcp_tool_result_content_item::Content::Image(
+                            pb::McpImageContent {
+                                data: image_data,
+                                mime_type: "image/png".into(),
+                            },
+                        )),
+                    }],
+                    ..Default::default()
+                })),
+            }),
+            ..Default::default()
+        });
+        let mut content = "MCP image".into();
+
+        tool_completion("CallMcpTool", &mut tool, &mut content);
+
+        let pb::tool_call::Tool::McpToolCall(tool) = tool else {
+            unreachable!()
+        };
+        let Some(pb::mcp_tool_result::Result::Success(success)) =
+            tool.result.and_then(|result| result.result)
+        else {
+            panic!("expected mcp success")
+        };
+        let Some(pb::mcp_tool_result_content_item::Content::Image(image)) =
+            success.content[0].content.as_ref()
+        else {
+            panic!("expected mcp image")
+        };
+        assert_eq!(image.data, original_image_data);
+        assert!(!success.content.iter().any(is_mcp_notice));
     }
 
     #[test]
