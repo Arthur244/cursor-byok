@@ -15,6 +15,29 @@ use crate::{
     Error, Result,
 };
 
+macro_rules! dbg_log {
+    ($loc:expr, $msg:expr, $data:expr) => {
+        {
+            let _ = (|| -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
+                use std::io::Write;
+                let payload = serde_json::json!({
+                    "sessionId": "216d24",
+                    "location": $loc,
+                    "message": $msg,
+                    "data": $data,
+                    "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_millis() as u64,
+                });
+                let mut f = std::fs::OpenOptions::new().create(true).append(true).open(
+                    concat!(env!("CARGO_MANIFEST_DIR"), "/../.cursor/debug-216d24.log")
+                )?;
+                writeln!(f, "{}", payload)?;
+                f.flush()?;
+                Ok(())
+            })();
+        }
+    };
+}
+
 use super::{
     apply_openai_prompt_cache_key, merge_extra_params, recorder::recorded_headers, CallRecorder,
     FinishReason, ModelEvent, Provider, ProviderStream,
@@ -61,6 +84,13 @@ impl Provider for OpenAiChatProvider {
         let recorder = self.recorder.clone();
         Box::pin(try_stream! {
             let ModelInvocation { call_id, request, .. } = invocation;
+            dbg_log!("openai_chat.rs:stream", "Provider stream started", serde_json::json!({
+                "model": request.model.model_id,
+                "url": config.request_url,
+                "call_id": call_id.clone(),
+                "history_len": request.history.len(),
+                "tools_count": request.prompt.tools.len()
+            }));
             let messages = openai_chat_messages(&request.prompt.instructions, &request.history)?;
             let mut body = json!({
                 "model": request.model.model_id,
@@ -85,7 +115,22 @@ impl Provider for OpenAiChatProvider {
                 _ = cancellation.cancelled() => return,
                 response = request => response,
             };
-            let response = response?;
+            let response = match response {
+                Ok(r) => {
+                    dbg_log!("openai_chat.rs:stream", "HTTP response received", serde_json::json!({
+                        "status": r.status().as_u16(),
+                        "url": config.request_url
+                    }));
+                    r
+                }
+                Err(e) => {
+                    dbg_log!("openai_chat.rs:stream", "HTTP request FAILED", serde_json::json!({
+                        "error": e.to_string(),
+                        "url": config.request_url
+                    }));
+                    Err(Error::from(e))?
+                }
+            };
             if let Some(recorder) = &recorder {
                 recorder.response_headers(response.status().as_u16()).await?;
             }
@@ -118,15 +163,35 @@ impl Provider for OpenAiChatProvider {
             let mut final_usage = None;
             let mut finish = None;
             let mut saw_done_marker = false;
+            let mut loop_iteration: u64 = 0;
             loop {
+                loop_iteration += 1;
                 let event = tokio::select! {
                     _ = cancellation.cancelled() => {
+                        dbg_log!("openai_chat.rs:stream", "Stream cancelled by token", serde_json::json!({
+                            "iteration": loop_iteration,
+                            "saw_done_marker": saw_done_marker,
+                            "tool_count": tools.len()
+                        }));
                         return;
                     }
                     event = source.next() => event,
                 };
-                let Some(event) = event else { break };
-                let event = event.map_err(|error| Error::Provider(format!("OpenAI Chat SSE: {error}")))?;
+                let Some(event) = event else {
+                    dbg_log!("openai_chat.rs:stream", "SSE stream ended (None)", serde_json::json!({
+                        "iteration": loop_iteration,
+                        "saw_done_marker": saw_done_marker
+                    }));
+                    break;
+                };
+                let event = event.map_err(|error| {
+                    let err_msg = error.to_string();
+                    dbg_log!("openai_chat.rs:stream", "SSE event error", serde_json::json!({
+                        "iteration": loop_iteration,
+                        "error": err_msg.clone()
+                    }));
+                    Error::Provider(format!("OpenAI Chat SSE: {err_msg}"))
+                })?;
                 if event.data == "[DONE]" { saw_done_marker = true; break; }
                 let value: Value = serde_json::from_str(&event.data)?;
                 if let Some(usage) = value.get("usage").filter(|value| !value.is_null()) {
