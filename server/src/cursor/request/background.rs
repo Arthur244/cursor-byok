@@ -56,10 +56,9 @@ pub(super) fn project(
                 ))
             })?;
         if reason != pb::BackgroundTaskCompletionReason::TaskFinished {
-            return Err(Error::Protocol(format!(
-                "background task notification is not a finished task: {}",
-                reason.as_str_name()
-            )));
+            // Progress and reparenting notifications are informational; the
+            // client batches them together with the real finish notification.
+            continue;
         }
         if completion.task_id.is_empty() || completion.title.is_empty() {
             return Err(Error::Protocol(
@@ -110,7 +109,7 @@ pub(super) fn project(
     let (first, _) = completions
         .values()
         .next()
-        .expect("background completion action was validated as non-empty");
+        .ok_or_else(|| Error::Protocol("background task notification contains no finished task".into()))?;
     let text = match (has_shell, has_subagent) {
         (true, false) => SHELL_FOLLOW_UP.into(),
         (false, true) => FOLLOW_UP.into(),
@@ -362,7 +361,25 @@ mod tests {
         )
         .unwrap_err()
         .to_string()
-        .contains("not a finished task"));
+        .contains("no finished task"));
+    }
+
+    #[test]
+    fn progress_notifications_batched_with_a_finish_are_ignored() {
+        let mut progress = completion();
+        progress.task_id = "child-id:task_progress:1".into();
+        progress.reason = pb::BackgroundTaskCompletionReason::TaskProgress as i32;
+        let projection = project(
+            &pb::BackgroundTaskCompletionAction {
+                completions: vec![progress, completion()],
+            },
+            pb::AgentMode::Agent as i32,
+        )
+        .unwrap();
+
+        assert!(projection.context.contains("agent_id: child-id"));
+        assert!(!projection.context.contains("task_progress"));
+        assert_eq!(projection.turn_user.text, FOLLOW_UP);
     }
 
     fn completion() -> pb::BackgroundTaskCompletion {
