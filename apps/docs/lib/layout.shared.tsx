@@ -2,6 +2,7 @@ import Image from 'next/image';
 import { zhCN } from '@fumadocs/language/zh-cn';
 import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
 import { uiTranslations } from 'fumadocs-ui/i18n';
+import { blogSource } from './blog';
 import { i18n, type Language } from './i18n';
 import { appName, gitConfig, releaseUrl } from './shared';
 
@@ -30,10 +31,14 @@ export function baseOptions(lang: Language): BaseLayoutProps {
         text: labels.docs,
         url: `${prefix}/docs`,
       },
-      {
-        text: labels.blog,
-        url: `${prefix}/blog`,
-      },
+      ...(blogSource.getPages(lang).length > 0
+        ? [
+            {
+              text: labels.blog,
+              url: `${prefix}/blog`,
+            },
+          ]
+        : []),
       {
         text: labels.download,
         url: releaseUrl,

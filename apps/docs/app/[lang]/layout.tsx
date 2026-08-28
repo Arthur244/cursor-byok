@@ -18,7 +18,7 @@ export async function generateMetadata(props: LayoutProps<'/[lang]'>): Promise<M
         default: 'Cursor Byok Docs',
         template: '%s | Cursor Byok',
       },
-      description: 'Installation, model configuration, and troubleshooting guide for Cursor Byok.',
+      description: 'Installation, model configuration, and frequently asked questions for Cursor Byok.',
     };
   }
 
@@ -28,7 +28,7 @@ export async function generateMetadata(props: LayoutProps<'/[lang]'>): Promise<M
       default: 'Cursor Byok 文档',
       template: '%s | Cursor Byok',
     },
-    description: 'Cursor Byok 的安装、模型配置与故障排查指南。',
+    description: '安装、模型配置与常见问题指南。',
   };
 }
 

@@ -45,9 +45,10 @@ You can connect OpenAI- and Anthropic-compatible services, customize endpoints, 
 1. Download the latest build for your platform from [GitHub Releases](https://github.com/leookun/cursor-byok/releases/latest).
 2. Launch cursor-byok, open **Model Settings**, and enter the endpoint, API key, and model ID.
 3. Test the model configuration. Once it passes, return to the dashboard and start the service.
-4. Open Cursor, select the configured model, and start using Agent.
+4. Test the model configuration. Once it passes, return to the dashboard and start the service.
+5. After upgrading Cursor or configuring a model for the first time, quit Cursor completely and restart it, then start a new conversation and select the configured model.
 
-For complete installation steps, system configuration, and troubleshooting, see the [User Guide](https://docs.leokun.cn).
+For complete installation steps, system configuration, and Frequently Asked Questions, see the [User Guide](https://docs.leokun.cn).
 
 ## Model Management
 

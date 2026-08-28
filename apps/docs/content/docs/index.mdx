@@ -10,6 +10,10 @@ Cursor Byok 是运行在本机的 Cursor 模型网关。它接收 Cursor Agent �
 Cursor Byok 是独立开源项目，与 Cursor 及其开发者没有关联。软件本身免费，但模型服务商可能按用量收费。
 </Callout>
 
+<Callout type="warn" title="首次升级或配置后必须重启 Cursor，并新建对话">
+首次升级 Cursor 或首次配置模型后，请完全退出并重新启动一次 Cursor，然后新建一个对话再选择模型。现有对话不会加载新的连接配置，继续使用可能提示“未登录”、无法看到模型，或出现 `An unexpected error occurred`。
+</Callout>
+
 ## 安装与配置
 
 <Steps>
@@ -44,17 +48,17 @@ Cursor Byok 是独立开源项目，与 Cursor 及其开发者没有关联。软
 
 <Step>
 
-### 首次配置后重启 Cursor
+### 首次升级或配置后重启 Cursor
 
-首次完成配置时，完全退出并重新启动一次 Cursor，让模型列表生效。
+首次升级 Cursor 或首次配置模型后，**必须完全退出 Cursor 并重新启动一次**。仅关闭窗口或继续使用当前对话，都不会加载新的连接配置。
 
 </Step>
 
 <Step>
 
-### 在 Cursor 中使用
+### 新建对话并选择模型
 
-保持 Cursor Byok 运行，在 Cursor 中新开一个对话，从模型列表中选择你刚配置的模型（不要选 Auto），开始使用 Agent。
+Cursor 重启完成后，点击新建对话，再从模型列表中选择你刚配置的模型（不要选 Auto）。请勿继续使用配置前已经打开的对话。
 
 </Step>
 
@@ -75,7 +79,7 @@ Cursor Byok 是独立开源项目，与 Cursor 及其开发者没有关联。软
   <Card title="安装指南" description="下载、初始化和首次运行。" href="/docs/installation" />
   <Card title="模型配置" description="选择协议并填写上游模型参数。" href="/docs/model-configuration" />
   <Card title="TAB 服务" description="选择 Cursor Tab 补全接口的连接方式。" href="/docs/tab-service" />
-  <Card title="故障排查" description="处理证书、连接与模型测试问题。" href="/docs/troubleshooting" />
+  <Card title="常见问题" description="回答常见的证书、连接和模型配置问题。" href="/docs/faq" />
 </Cards>
 
 ## 数据如何流转

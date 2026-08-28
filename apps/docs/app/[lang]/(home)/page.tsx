@@ -57,9 +57,9 @@ const copy: Record<
       },
       {
         icon: Wrench,
-        title: '故障排查',
-        description: '解决证书、连接和模型测试问题。',
-        href: '/docs/troubleshooting',
+        title: '常见问题',
+        description: '回答常见问题。',
+        href: '/docs/faq',
       },
     ],
     blogEyebrow: 'DEVELOPER BLOG',
@@ -91,9 +91,9 @@ const copy: Record<
       },
       {
         icon: Wrench,
-        title: 'Troubleshooting',
-        description: 'Resolve certificate, connection, and model test issues.',
-        href: '/docs/troubleshooting',
+        title: 'Frequently Asked Questions',
+        description: 'Answer common questions.',
+        href: '/docs/faq',
       },
     ],
     blogEyebrow: 'DEVELOPER BLOG',
@@ -206,39 +206,43 @@ export default async function HomePage(props: PageProps<'/[lang]'>) {
         </div>
       </section>
 
-      <section className="px-6 py-16 sm:py-20">
-        <div className="mx-auto max-w-5xl">
-          <div className="flex items-end justify-between gap-6">
-            <div>
-              <p className="font-mono text-sm font-medium text-fd-primary">{t.blogEyebrow}</p>
-              <h2 className="mt-3 text-3xl font-bold tracking-tight">{t.blogTitle}</h2>
-            </div>
-            <Link href={`${prefix}/blog`} className="flex items-center gap-2 text-sm font-medium">
-              {t.viewAll}
-              <ArrowRight className="size-4" />
-            </Link>
-          </div>
-
-          <div className="mt-10 divide-y border-y">
-            {posts.map((post) => (
-              <Link
-                key={post.url}
-                href={post.url}
-                className="group grid gap-3 py-6 transition-colors hover:text-fd-primary sm:grid-cols-[10rem_1fr_auto] sm:items-center"
-              >
-                <time className="text-sm text-fd-muted-foreground">
-                  {formatBlogDate(post.path, lang)}
-                </time>
-                <div>
-                  <h3 className="font-semibold">{post.data.title}</h3>
-                  <p className="mt-1 text-sm text-fd-muted-foreground">{post.data.description}</p>
-                </div>
-                <ArrowRight className="hidden size-4 transition-transform group-hover:translate-x-1 sm:block" />
+      {posts.length > 0 ? (
+        <section className="px-6 py-16 sm:py-20">
+          <div className="mx-auto max-w-5xl">
+            <div className="flex items-end justify-between gap-6">
+              <div>
+                <p className="font-mono text-sm font-medium text-fd-primary">{t.blogEyebrow}</p>
+                <h2 className="mt-3 text-3xl font-bold tracking-tight">{t.blogTitle}</h2>
+              </div>
+              <Link href={`${prefix}/blog`} className="flex items-center gap-2 text-sm font-medium">
+                {t.viewAll}
+                <ArrowRight className="size-4" />
               </Link>
-            ))}
+            </div>
+
+            <div className="mt-10 divide-y border-y">
+              {posts.map((post) => (
+                <Link
+                  key={post.url}
+                  href={post.url}
+                  className="group grid gap-3 py-6 transition-colors hover:text-fd-primary sm:grid-cols-[10rem_1fr_auto] sm:items-center"
+                >
+                  <time className="text-sm text-fd-muted-foreground">
+                    {formatBlogDate(post.path, lang)}
+                  </time>
+                  <div>
+                    <h3 className="font-semibold">{post.data.title}</h3>
+                    <p className="mt-1 text-sm text-fd-muted-foreground">
+                      {post.data.description}
+                    </p>
+                  </div>
+                  <ArrowRight className="hidden size-4 transition-transform group-hover:translate-x-1 sm:block" />
+                </Link>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      ) : null}
     </main>
   );
 }

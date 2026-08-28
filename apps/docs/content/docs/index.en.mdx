@@ -10,6 +10,10 @@ Cursor Byok is a Cursor model gateway that runs on your machine. It receives Cur
 Cursor Byok is an independent open-source project and is not affiliated with Cursor or its developers. The software itself is free, but model providers may charge for usage.
 </Callout>
 
+<Callout type="warn" title="Restart Cursor and start a new conversation after an upgrade or first setup">
+After upgrading Cursor or configuring a model for the first time, quit Cursor completely and restart it once, then start a new conversation before selecting the model. Existing conversations do not load the new connection settings and may show “not signed in,” omit the model, or show `An unexpected error occurred`.
+</Callout>
+
 ## Install and configure
 
 <Steps>
@@ -44,17 +48,17 @@ See [Model Configuration](./model-configuration.mdx) for how to choose the type 
 
 <Step>
 
-### Restart Cursor after the first setup
+### Restart Cursor after an upgrade or first setup
 
-After completing the configuration for the first time, quit and restart Cursor once so the model list takes effect.
+After upgrading Cursor or configuring a model for the first time, **quit Cursor completely and restart it once**. Closing only the window or continuing in the current conversation does not load the new connection settings.
 
 </Step>
 
 <Step>
 
-### Use it in Cursor
+### Start a new conversation and select the model
 
-Keep Cursor Byok running, start a new conversation in Cursor, pick the model you just configured from the model list (do not pick Auto), and start using Agent.
+Once Cursor has restarted, start a new conversation and select the model you just configured from the model list (do not select Auto). Do not continue a conversation that was already open before setup.
 
 </Step>
 
@@ -75,7 +79,7 @@ The current design goal is coexistence with the official service — there is no
   <Card title="Installation" description="Download, initialize, and run for the first time." href="/docs/installation" />
   <Card title="Model Configuration" description="Choose a protocol and fill in upstream model parameters." href="/docs/model-configuration" />
   <Card title="TAB Service" description="Choose how Cursor connects to Tab completion endpoints." href="/docs/tab-service" />
-  <Card title="Troubleshooting" description="Resolve certificate, connection, and model test issues." href="/docs/troubleshooting" />
+  <Card title="Frequently Asked Questions" description="Answer common certificate, connection, and model configuration questions." href="/docs/faq" />
 </Cards>
 
 ## How data flows

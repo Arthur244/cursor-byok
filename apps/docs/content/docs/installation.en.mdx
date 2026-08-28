@@ -50,6 +50,22 @@ Click **Test** on the model. Once the test passes, the model appears in Cursor's
 
 </Step>
 
+<Step>
+
+### Completely restart Cursor after an upgrade or first setup
+
+After upgrading Cursor or configuring a model for the first time, **quit Cursor completely and restart it once**. Closing only the window is not enough; make sure the Cursor process has stopped before opening it again.
+
+</Step>
+
+<Step>
+
+### Start a new conversation
+
+After Cursor restarts, start a new conversation and select your configured model from the model list. Do not continue a conversation opened before setup, and do not select **Auto**.
+
+</Step>
+
 </Steps>
 
 ## Verify the installation
@@ -59,9 +75,11 @@ After configuration, confirm that:
 - The Cursor Settings page no longer shows the CA initialization prompt.
 - At least one model passes the connectivity test.
 - Cursor Byok stays running.
+- Cursor has been quit completely and restarted once.
+- You started a new conversation instead of continuing one opened before setup.
 - The configured display name shows up in Cursor's model list.
 
-If any of these steps fail, head to [Troubleshooting](./troubleshooting.mdx).
+If any of these steps fail, head to [Frequently Asked Questions](./faq.mdx).
 
 ## Updates
 
