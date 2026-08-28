@@ -69,12 +69,14 @@ impl Provider for OpenAiResponsesProvider {
             let mut body = json!({
                 "model": request.model.model_id, "input": input, "stream": true,
                 "instructions": request.prompt.instructions,
-                "include": ["reasoning.encrypted_content"],
-                "tools": request.prompt.tools.iter().map(|tool| json!({
+                "include": ["reasoning.encrypted_content"]
+            });
+            if !request.prompt.tools.is_empty() {
+                body["tools"] = json!(request.prompt.tools.iter().map(|tool| json!({
                     "type":"function", "name":tool.name, "description":tool.description,
                     "parameters":tool.parameters, "strict":false
-                })).collect::<Vec<_>>()
-            });
+                })).collect::<Vec<_>>());
+            }
             apply_model(&mut body, &request.model, config.max_output_tokens)?;
             merge_extra_params(&mut body, &request.model.extra_params)?;
             apply_openai_prompt_cache_key(&mut body, &request.model.model_id)?;
