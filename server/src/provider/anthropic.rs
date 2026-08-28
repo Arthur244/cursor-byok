@@ -55,11 +55,13 @@ impl Provider for AnthropicProvider {
                 .unwrap_or(DEFAULT_MAX_OUTPUT_TOKENS);
             let mut body = json!({
                 "model": request.model.model_id, "system": request.prompt.instructions, "messages": messages,
-                "max_tokens": max_tokens, "stream": true,
-                "tools": request.prompt.tools.iter().map(|tool| json!({
-                    "name": tool.name, "description": tool.description, "input_schema": tool.parameters
-                })).collect::<Vec<_>>()
+                "max_tokens": max_tokens, "stream": true
             });
+            if !request.prompt.tools.is_empty() {
+                body["tools"] = json!(request.prompt.tools.iter().map(|tool| json!({
+                    "name": tool.name, "description": tool.description, "input_schema": tool.parameters
+                })).collect::<Vec<_>>());
+            }
             apply_model(&mut body, &request.model)?;
             merge_extra_params(&mut body, &request.model.extra_params)?;
             if let Some(recorder) = &recorder {
