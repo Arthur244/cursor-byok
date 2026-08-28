@@ -51,16 +51,32 @@ impl Provider for AnthropicProvider {
             let ModelInvocation { call_id, request, .. } = invocation;
             let mut messages = anthropic_messages(&request.history)?;
             mark_cache_breakpoint(&mut messages);
+            let system = if request.prompt.instructions.is_empty() {
+                Value::String(String::new())
+            } else {
+                json!([{
+                    "type": "text",
+                    "text": request.prompt.instructions,
+                    "cache_control": {"type": "ephemeral"}
+                }])
+            };
             let max_tokens = request.model.max_output_tokens.or(config.max_output_tokens)
                 .unwrap_or(DEFAULT_MAX_OUTPUT_TOKENS);
             let mut body = json!({
-                "model": request.model.model_id, "system": request.prompt.instructions, "messages": messages,
+                "model": request.model.model_id, "system": system, "messages": messages,
                 "max_tokens": max_tokens, "stream": true
             });
             if !request.prompt.tools.is_empty() {
-                body["tools"] = json!(request.prompt.tools.iter().map(|tool| json!({
-                    "name": tool.name, "description": tool.description, "input_schema": tool.parameters
-                })).collect::<Vec<_>>());
+                let tool_count = request.prompt.tools.len();
+                body["tools"] = json!(request.prompt.tools.iter().enumerate().map(|(index, tool)| {
+                    let mut value = json!({
+                        "name": tool.name, "description": tool.description, "input_schema": tool.parameters
+                    });
+                    if index + 1 == tool_count {
+                        value["cache_control"] = json!({"type": "ephemeral"});
+                    }
+                    value
+                }).collect::<Vec<_>>());
             }
             apply_model(&mut body, &request.model)?;
             merge_extra_params(&mut body, &request.model.extra_params)?;
@@ -376,19 +392,24 @@ fn anthropic_messages(messages: &[ProjectedMessage]) -> Result<Vec<Value>> {
 }
 
 fn mark_cache_breakpoint(messages: &mut [Value]) {
-    for message in messages {
-        let Some(content) = message.get_mut("content").and_then(Value::as_array_mut) else {
+    let Some(message) = messages
+        .iter_mut()
+        .rev()
+        .find(|message| message.get("role").and_then(Value::as_str) == Some("user"))
+    else {
+        return;
+    };
+    let Some(content) = message.get_mut("content").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for block in content.iter_mut().rev() {
+        let kind = block.get("type").and_then(Value::as_str);
+        if !matches!(kind, Some("text" | "image" | "tool_result")) {
             continue;
-        };
-        for block in content {
-            let kind = block.get("type").and_then(Value::as_str);
-            if matches!(kind, Some("thinking" | "redacted_thinking")) {
-                continue;
-            }
-            if let Some(block) = block.as_object_mut() {
-                block.insert("cache_control".into(), json!({"type": "ephemeral"}));
-                return;
-            }
+        }
+        if let Some(block) = block.as_object_mut() {
+            block.insert("cache_control".into(), json!({"type": "ephemeral"}));
+            return;
         }
     }
 }
