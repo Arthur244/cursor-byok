@@ -316,6 +316,8 @@ impl CursorSessionRegistry {
             // Create the notification future BEFORE checking state to avoid
             // a race where a notification fires between state check and await.
             let changed = self.inner.route_changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
             if self.inner.runs.lock().await.contains_key(request_id) {
                 return CursorRoute::Local;
             }
