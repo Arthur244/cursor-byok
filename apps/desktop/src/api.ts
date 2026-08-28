@@ -116,6 +116,8 @@ export interface StatisticsStorage {
   trace_count: number;
 }
 
+export type StatisticsStorageScope = "details" | "all";
+
 export type ProxyMode = "system" | "custom";
 
 export interface ProxySettings {
@@ -330,7 +332,7 @@ export const api = {
   ports: () => request<PortSettings>("/settings/ports"),
   setPorts: (settings: PortSettings) => request<PortSettings>("/settings/ports", { method: "PUT", body: JSON.stringify(settings) }),
   statisticsStorage: () => request<StatisticsStorage>("/settings/storage/statistics"),
-  clearStatisticsStorage: () => request<StatisticsStorage>("/settings/storage/statistics", { method: "DELETE" }),
+  clearStatisticsStorage: (scope: StatisticsStorageScope) => request<StatisticsStorage>("/settings/storage/statistics", { method: "DELETE", body: JSON.stringify({ scope }) }),
   proxySettings: () => request<ProxySettings>("/settings/proxy"),
   setProxySettings: (settings: ProxySettingsInput) => request<ProxySettings>("/settings/proxy", { method: "PUT", body: JSON.stringify(settings) }),
   tabSettings: () => request<TabSettings>("/settings/tab"),

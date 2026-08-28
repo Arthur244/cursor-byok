@@ -138,7 +138,10 @@ export function installDemoApi() {
     }
     if (path === "/settings/storage/statistics" && method === "GET") return json(storage);
     if (path === "/settings/storage/statistics") {
-      storage = { bytes: 0, call_count: 0, trace_count: 0 };
+      const scope = (body as { scope?: string } | null)?.scope ?? "details";
+      storage = scope === "all"
+        ? { bytes: 0, call_count: 0, trace_count: 0 }
+        : { ...storage, bytes: 0 };
       return json(storage);
     }
     if (path === "/settings/proxy" && method === "GET") return json(proxySettings);

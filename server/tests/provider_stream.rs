@@ -672,7 +672,17 @@ async fn anthropic_raw_stream_uses_explicit_and_default_token_limits() {
     server.abort();
 
     assert_eq!(body["max_tokens"], 1234);
+    assert!(body.get("cache_control").is_none());
+    assert_eq!(
+        body["messages"][0]["content"][0]["cache_control"]["type"],
+        "ephemeral"
+    );
     assert_eq!(default_body["max_tokens"], 65_000);
+    assert!(default_body.get("cache_control").is_none());
+    assert_eq!(
+        default_body["messages"][0]["content"][0]["cache_control"]["type"],
+        "ephemeral"
+    );
     assert!(body.get("service_tier").is_none());
     assert_eq!(body["messages"][0]["content"][1]["type"], "image");
     assert_eq!(

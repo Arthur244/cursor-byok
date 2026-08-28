@@ -64,6 +64,7 @@ impl CursorActor {
                 };
                 match command {
                     CursorCommand::Abort => {
+                        handle.mark_conversation_cancelled();
                         handle.cancel();
                     }
                     CursorCommand::Finished => {
@@ -76,6 +77,24 @@ impl CursorActor {
                                     Some(pb::agent_client_message::Message::RunRequest(
                                         request,
                                     )) => {
+                                        if let Some(conversation_id) =
+                                            request.conversation_id.as_deref()
+                                        {
+                                            if let Err(error) =
+                                                handle.set_conversation_id(conversation_id)
+                                            {
+                                                tracing::error!(
+                                                    request_id = handle.request_id(),
+                                                    %error,
+                                                    "invalid Cursor conversation id"
+                                                );
+                                                let _ =
+                                                    crate::cursor::lifecycle::fail(&handle, &error);
+                                                let _ =
+                                                    handle.command(CursorCommand::Finished).await;
+                                                return;
+                                            }
+                                        }
                                         if let Some((results, runtime_actions, dependencies)) =
                                             run_resources.take()
                                         {
@@ -357,8 +376,12 @@ impl CursorActor {
                                     ) => match action.action {
                                         Some(
                                             pb::conversation_action::Action::UserMessageAction(_),
-                                        )
-                                        | Some(pb::conversation_action::Action::CancelAction(_)) => {
+                                        ) => {
+                                            handle.mark_conversation_cancelled();
+                                            handle.cancel();
+                                        }
+                                        Some(pb::conversation_action::Action::CancelAction(_)) => {
+                                            handle.mark_conversation_cancelled();
                                             handle.cancel();
                                         }
                                         Some(

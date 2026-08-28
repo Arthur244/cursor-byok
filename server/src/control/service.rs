@@ -565,6 +565,10 @@ impl ControlService {
         self.store.clear_statistics_storage().await
     }
 
+    pub async fn clear_all_statistics_storage(&self) -> Result<StatisticsStorage> {
+        self.store.clear_all_statistics_storage().await
+    }
+
     pub async fn proxy_settings(&self) -> Result<ProxySettings> {
         self.store.proxy_settings().await
     }

@@ -49,7 +49,8 @@ impl Provider for AnthropicProvider {
         let recorder = self.recorder.clone();
         Box::pin(try_stream! {
             let ModelInvocation { call_id, request, .. } = invocation;
-            let messages = anthropic_messages(&request.history)?;
+            let mut messages = anthropic_messages(&request.history)?;
+            mark_cache_breakpoint(&mut messages);
             let max_tokens = request.model.max_output_tokens.or(config.max_output_tokens)
                 .unwrap_or(DEFAULT_MAX_OUTPUT_TOKENS);
             let mut body = json!({
@@ -370,6 +371,24 @@ fn anthropic_messages(messages: &[ProjectedMessage]) -> Result<Vec<Value>> {
         }
     }
     Ok(output)
+}
+
+fn mark_cache_breakpoint(messages: &mut [Value]) {
+    for message in messages {
+        let Some(content) = message.get_mut("content").and_then(Value::as_array_mut) else {
+            continue;
+        };
+        for block in content {
+            let kind = block.get("type").and_then(Value::as_str);
+            if matches!(kind, Some("thinking" | "redacted_thinking")) {
+                continue;
+            }
+            if let Some(block) = block.as_object_mut() {
+                block.insert("cache_control".into(), json!({"type": "ephemeral"}));
+                return;
+            }
+        }
+    }
 }
 
 fn anthropic_parts(role: &Role, parts: &[ContentPart]) -> Result<Vec<Value>> {
