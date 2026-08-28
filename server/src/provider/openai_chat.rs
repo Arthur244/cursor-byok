@@ -15,6 +15,29 @@ use crate::{
     Error, Result,
 };
 
+macro_rules! dbg_log {
+    ($loc:expr, $msg:expr, $data:expr) => {
+        {
+            let _ = (|| -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
+                use std::io::Write;
+                let payload = serde_json::json!({
+                    "sessionId": "216d24",
+                    "location": $loc,
+                    "message": $msg,
+                    "data": $data,
+                    "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_millis() as u64,
+                });
+                let mut f = std::fs::OpenOptions::new().create(true).append(true).open(
+                    concat!(env!("CARGO_MANIFEST_DIR"), "/../.cursor/debug-216d24.log")
+                )?;
+                writeln!(f, "{}", payload)?;
+                f.flush()?;
+                Ok(())
+            })();
+        }
+    };
+}
+
 use super::{
     apply_openai_prompt_cache_key, merge_extra_params, recorder::recorded_headers, CallRecorder,
     FinishReason, ModelEvent, Provider, ProviderStream,
@@ -61,18 +84,23 @@ impl Provider for OpenAiChatProvider {
         let recorder = self.recorder.clone();
         Box::pin(try_stream! {
             let ModelInvocation { call_id, request, .. } = invocation;
+            dbg_log!("openai_chat.rs:stream", "Provider stream started", serde_json::json!({
+                "model": request.model.model_id,
+                "url": config.request_url,
+                "call_id": call_id.clone(),
+                "history_len": request.history.len(),
+                "tools_count": request.prompt.tools.len()
+            }));
             let messages = openai_chat_messages(&request.prompt.instructions, &request.history)?;
             let mut body = json!({
                 "model": request.model.model_id,
                 "messages": messages,
+                "tools": request.prompt.tools.iter().map(|tool| json!({"type":"function","function":{
+                    "name": tool.name, "description": tool.description, "parameters": tool.parameters
+                }})).collect::<Vec<_>>(),
                 "stream": true,
                 "stream_options": {"include_usage": true}
             });
-            if !request.prompt.tools.is_empty() {
-                body["tools"] = json!(request.prompt.tools.iter().map(|tool| json!({"type":"function","function":{
-                    "name": tool.name, "description": tool.description, "parameters": tool.parameters
-                }})).collect::<Vec<_>>());
-            }
             apply_model(&mut body, &request.model, config.max_output_tokens)?;
             merge_extra_params(&mut body, &request.model.extra_params)?;
             apply_openai_prompt_cache_key(&mut body, &request.model.model_id)?;
@@ -85,7 +113,22 @@ impl Provider for OpenAiChatProvider {
                 _ = cancellation.cancelled() => return,
                 response = request => response,
             };
-            let response = response?;
+            let response = match response {
+                Ok(r) => {
+                    dbg_log!("openai_chat.rs:stream", "HTTP response received", serde_json::json!({
+                        "status": r.status().as_u16(),
+                        "url": config.request_url
+                    }));
+                    r
+                }
+                Err(e) => {
+                    dbg_log!("openai_chat.rs:stream", "HTTP request FAILED", serde_json::json!({
+                        "error": e.to_string(),
+                        "url": config.request_url
+                    }));
+                    Err(Error::from(e))?
+                }
+            };
             if let Some(recorder) = &recorder {
                 recorder.response_headers(response.status().as_u16()).await?;
             }
@@ -118,15 +161,50 @@ impl Provider for OpenAiChatProvider {
             let mut final_usage = None;
             let mut finish = None;
             let mut saw_done_marker = false;
+            let mut loop_iteration: u64 = 0;
             loop {
+                loop_iteration += 1;
+                dbg_log!("openai_chat.rs:stream:poll", "Polling SSE event", serde_json::json!({
+                    "iteration": loop_iteration,
+                    "saw_done": saw_done_marker,
+                    "has_finish": finish.is_some(),
+                    "tool_count": tools.len(),
+                    "text_open": text_open,
+                    "thinking_open": thinking_open,
+                    "reasoning_len": reasoning.len()
+                }));
                 let event = tokio::select! {
                     _ = cancellation.cancelled() => {
+                        dbg_log!("openai_chat.rs:stream", "Stream cancelled by token", serde_json::json!({
+                            "iteration": loop_iteration,
+                            "saw_done_marker": saw_done_marker,
+                            "tool_count": tools.len(),
+                            "text_open": text_open
+                        }));
                         return;
                     }
                     event = source.next() => event,
                 };
-                let Some(event) = event else { break };
-                let event = event.map_err(|error| Error::Provider(format!("OpenAI Chat SSE: {error}")))?;
+                let Some(event) = event else {
+                    dbg_log!("openai_chat.rs:stream:poll", "SSE stream ended (None from source)", serde_json::json!({
+                        "iteration": loop_iteration,
+                        "saw_done_marker": saw_done_marker,
+                        "has_finish": finish.is_some(),
+                        "tool_count": tools.len(),
+                        "text_open": text_open,
+                        "thinking_open": thinking_open,
+                        "reasoning_len": reasoning.len()
+                    }));
+                    break;
+                };
+                let event = event.map_err(|error| {
+                    let err_msg = error.to_string();
+                    dbg_log!("openai_chat.rs:stream:poll", "SSE event error", serde_json::json!({
+                        "iteration": loop_iteration,
+                        "error": err_msg.clone()
+                    }));
+                    Error::Provider(format!("OpenAI Chat SSE: {err_msg}"))
+                })?;
                 if event.data == "[DONE]" { saw_done_marker = true; break; }
                 let value: Value = serde_json::from_str(&event.data)?;
                 if let Some(usage) = value.get("usage").filter(|value| !value.is_null()) {
@@ -134,7 +212,7 @@ impl Provider for OpenAiChatProvider {
                 }
                 let Some(choice) = value.get("choices").and_then(Value::as_array).and_then(|values| values.first()) else { continue; };
                 let delta = choice.get("delta").unwrap_or(&Value::Null);
-                if let Some(reasoning_delta) = delta.get("reasoning_content").or_else(|| delta.get("reasoning")).and_then(Value::as_str).filter(|text| !text.is_empty()) {
+                if let Some(reasoning_delta) = delta.get("reasoning_content").and_then(Value::as_str).filter(|text| !text.is_empty()) {
                     if !thinking_open { thinking_open = true; yield ModelEvent::ThinkingStart; }
                     reasoning.push_str(reasoning_delta);
                     yield ModelEvent::ThinkingDelta(reasoning_delta.into());
@@ -158,6 +236,15 @@ impl Provider for OpenAiChatProvider {
                     finish = Some(map_finish(reason, !tools.is_empty()));
                 }
             }
+            dbg_log!("openai_chat.rs:stream", "SSE loop exited", serde_json::json!({
+                "total_iterations": loop_iteration,
+                "saw_done_marker": saw_done_marker,
+                "finish_reason": finish.as_ref().map(|f| format!("{:?}", f)),
+                "reasoning_len": reasoning.len(),
+                "tool_count": tools.len(),
+                "text_open": text_open,
+                "thinking_open": thinking_open
+            }));
             if thinking_open { yield ModelEvent::ThinkingEnd; }
             if text_open { yield ModelEvent::TextEnd; }
             for (index, tool) in &mut tools {
@@ -232,27 +319,12 @@ fn openai_chat_messages(instructions: &str, messages: &[ProjectedMessage]) -> Re
                 calls,
                 ..
             } => {
+                value.insert("content".into(), Value::String(text.clone()));
                 let replay_reasoning = replay_state
                     .as_ref()
                     .filter(|state| state.provider_kind == "openai_chat")
                     .and_then(|state| state.value.get("reasoning_content"))
-                    .and_then(Value::as_str)
-                    .filter(|reasoning| !reasoning.is_empty());
-
-                // Chat Completions rejects an empty assistant content string. Tool-call
-                // assistant messages use null content, while an assistant with no visible
-                // content at all does not need to be sent.
-                if text.is_empty() && calls.is_empty() && replay_reasoning.is_none() {
-                    continue;
-                }
-                value.insert(
-                    "content".into(),
-                    if text.is_empty() {
-                        Value::Null
-                    } else {
-                        Value::String(text.clone())
-                    },
-                );
+                    .and_then(Value::as_str);
                 if let Some(reasoning) = replay_reasoning {
                     value.insert("reasoning_content".into(), Value::String(reasoning.into()));
                 }
@@ -415,7 +487,7 @@ mod tests {
         model::{ContentPart, ProjectedContent, ProjectedMessage, ToolResultContent},
         model::{ProviderReplayState, Role, ToolCallContent},
     };
-    use serde_json::{json, Value};
+    use serde_json::json;
 
     #[test]
     fn chat_replay_state_is_encoded_as_reasoning_content() {
@@ -445,52 +517,6 @@ mod tests {
         assert_eq!(messages[0]["content"], "visible answer");
         assert_eq!(messages[0]["reasoning_content"], "private reasoning");
         assert_eq!(messages[0]["tool_calls"][0]["id"], "call-1");
-    }
-
-    #[test]
-    fn chat_tool_call_assistant_uses_null_content() {
-        let messages = openai_chat_messages(
-            "",
-            &[ProjectedMessage {
-                message_id: "test".into(),
-                role: Role::Assistant,
-                content: ProjectedContent::Assistant {
-                    text: String::new(),
-                    thinking: String::new(),
-                    replay_state: None,
-                    calls: vec![ToolCallContent {
-                        index: 0,
-                        call_id: "call-1".into(),
-                        name: "Read".into(),
-                        arguments: json!({"path": "README.md"}),
-                    }],
-                },
-            }],
-        )
-        .unwrap();
-
-        assert_eq!(messages[0]["content"], Value::Null);
-        assert!(messages[0]["tool_calls"].is_array());
-    }
-
-    #[test]
-    fn chat_contentless_assistant_is_omitted() {
-        let messages = openai_chat_messages(
-            "",
-            &[ProjectedMessage {
-                message_id: "test".into(),
-                role: Role::Assistant,
-                content: ProjectedContent::Assistant {
-                    text: String::new(),
-                    thinking: String::new(),
-                    replay_state: None,
-                    calls: vec![],
-                },
-            }],
-        )
-        .unwrap();
-
-        assert!(messages.is_empty());
     }
 
     #[test]

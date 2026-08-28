@@ -58,14 +58,14 @@ impl CursorActor {
                 let command = match receiver.recv().await {
                     Some(command) => command,
                     None => {
-                        handle.cancel();
+                        lifecycle::cancel(&handle).ok();
                         break;
                     }
                 };
                 match command {
                     CursorCommand::Abort => {
                         handle.mark_conversation_cancelled();
-                        handle.cancel();
+                        lifecycle::cancel(&handle).ok();
                     }
                     CursorCommand::Finished => {
                         break;
