@@ -5,12 +5,11 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    client::ClientEvent,
     model::{ProviderReplayState, ToolCall, Usage},
     provider::{FinishReason, ModelEvent, ProviderStream},
 };
 
-use super::RunFailure;
+use super::{ClientEvent, RunFailure};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ModelCycleResult {

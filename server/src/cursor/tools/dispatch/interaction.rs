@@ -3,7 +3,7 @@
 use crate::{
     cursor::{interaction, proto::agent::v1 as pb},
     model::ToolCall,
-    web::{WebFetch, WebSearch},
+    search::{WebFetch, WebSearch},
     Error, Result,
 };
 
@@ -117,7 +117,7 @@ mod tests {
     use crate::{
         cursor::{proto::agent::v1 as pb, tools::result::tool_result_channel},
         model::ToolCall,
-        web::{HtmlEngine, WebFetch, WebSearch},
+        search::{HtmlEngine, WebFetch, WebSearch},
     };
 
     use super::{resume, InteractionContinuation, PendingInteraction};

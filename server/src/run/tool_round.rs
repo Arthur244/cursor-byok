@@ -3,15 +3,14 @@ use std::collections::HashSet;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    client::{
-        ClientCommand, ClientEvent, ClientPort, CommitBarrier, CommitCause, MessageInsertion,
-        StateCommitted,
-    },
     model::{PreparedRun, RevisionId, ToolCall, ToolResult, ToolRoundAssistant, ToolRoundId},
     store::Store,
 };
 
-use super::{RunFailure, RunOutcome};
+use super::{
+    ClientCommand, ClientEvent, ClientPort, CommitBarrier, CommitCause, MessageInsertion,
+    RunFailure, RunOutcome, StateCommitted,
+};
 
 pub(super) struct ToolRound {
     pub id: ToolRoundId,

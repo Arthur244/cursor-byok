@@ -1,5 +1,5 @@
 use axum::{http::StatusCode, response::IntoResponse, routing::get, Router};
-use cursor_server::web::{HtmlEngine, JsonEngine, WebSearch};
+use cursor_server::search::{HtmlEngine, JsonEngine, WebSearch};
 use tokio::net::TcpListener;
 
 const RESULT_SELECTOR: &str = ".result";
@@ -106,7 +106,7 @@ async fn json_engines_use_declared_result_fields() {
 #[ignore = "live public search smoke test"]
 async fn built_in_search_returns_live_results() {
     let _ = tracing_subscriber::fmt()
-        .with_env_filter("cursor_server::web=debug")
+        .with_env_filter("cursor_server::search=debug")
         .try_init();
     let results = WebSearch::built_in()
         .search("Rust programming language")

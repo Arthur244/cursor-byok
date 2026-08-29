@@ -9,8 +9,8 @@ use std::collections::BTreeMap;
 use crate::{
     cursor::proto::agent::v1 as pb,
     model::ToolCall,
+    search::{WebFetch, WebSearch},
     store::Store,
-    web::{WebFetch, WebSearch},
     Error, Result,
 };
 

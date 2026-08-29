@@ -1,5 +1,4 @@
 use cursor_server::{
-    client::ClientEvent,
     config::{ProviderConfig, ProviderKind},
     model::{
         ContentPart, ModelInvocation, ModelLatency, ModelRequest, ModelSpec, ProjectedContent,
@@ -9,7 +8,7 @@ use cursor_server::{
         FinishReason, ModelEvent, OpenAiChatProvider, OpenAiResponsesProvider, Provider,
         ProviderStream,
     },
-    run::{consume_model_cycle, RunFailure},
+    run::{consume_model_cycle, ClientEvent, RunFailure},
 };
 use futures_util::{stream, StreamExt};
 use serde_json::{json, Value};

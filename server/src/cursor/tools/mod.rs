@@ -18,8 +18,8 @@ mod tests;
 
 use crate::{
     model::{CanonicalMessage, MessageContent, Role, ToolCall},
+    search::{WebFetch, WebSearch},
     store::Store,
-    web::{WebFetch, WebSearch},
     Error, Result,
 };
 

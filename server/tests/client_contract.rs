@@ -6,13 +6,12 @@ mod fixtures;
 use std::sync::Arc;
 
 use cursor_server::{
-    client::{session, ClientCommand, ClientEvent, CommitCause},
     model::{
         ConversationId, ModelSpec, PreparedRun, PromptSpec, RunAction, RunId, RunKind,
         ToolDefinition, ToolResult,
     },
     provider::{FinishReason, ModelEvent},
-    run::{RunEngine, RunOutcome},
+    run::{session, ClientCommand, ClientEvent, CommitCause, RunEngine, RunOutcome},
 };
 use tokio::{sync::oneshot, time::Duration};
 use tokio_util::sync::CancellationToken;
@@ -94,7 +93,7 @@ async fn inserted_messages_wait_for_the_next_model_call_without_interrupting_the
     let (delivered, mut delivery) = oneshot::channel();
     commands
         .send(ClientCommand::InsertMessages(
-            cursor_server::client::MessageInsertion {
+            cursor_server::run::MessageInsertion {
                 messages: vec![cursor_server::model::RuntimeEvent {
                     event_id: "background:finished".into(),
                     text: "background work finished".into(),

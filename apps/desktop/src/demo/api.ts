@@ -8,7 +8,7 @@ import type {
   ProxySettings,
   StatisticsStorage,
   TabSettings,
-} from "../api";
+} from "../shared/api";
 
 const API_ROOT = "/__byok-api__/api";
 const FIXED_NOW = Date.UTC(2026, 7, 27, 8, 0, 0);

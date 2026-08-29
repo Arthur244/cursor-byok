@@ -1,16 +1,16 @@
 import { useEffect, useRef } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
-import { MessageProvider } from "./components/ui/MessageProvider";
-import { useMessage } from "./components/ui/message";
-import { AppFrame } from "./layouts/AppFrame";
-import { AppLayout } from "./layouts/AppLayout";
-import { CallsPage } from "./pages/CallsPage";
-import { CallDetailsPage } from "./pages/CallDetailsPage";
-import { CursorSettingsPage } from "./pages/CursorSettingsPage";
-import { HomePage } from "./pages/HomePage";
-import { SettingsPage } from "./pages/SettingsPage";
-import { useAppStore } from "./store/appStore";
-import { updateStore } from "./store/updateStore";
+import { MessageProvider } from "./shared/ui/MessageProvider";
+import { useMessage } from "./shared/ui/message";
+import { AppFrame } from "./shell/AppFrame";
+import { AppLayout } from "./shell/AppLayout";
+import { CallsPage } from "./features/calls/CallsPage";
+import { CallDetailsPage } from "./features/calls/CallDetailsPage";
+import { CursorSettingsPage } from "./features/models/CursorSettingsPage";
+import { HomePage } from "./features/home/HomePage";
+import { SettingsPage } from "./features/settings/SettingsPage";
+import { useAppStore } from "./shared/store/appStore";
+import { updateStore } from "./shared/store/updateStore";
 
 export function App() {
   return (

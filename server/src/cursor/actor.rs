@@ -193,7 +193,7 @@ impl CursorActor {
                                                     return;
                                                 }
                                                 let cancellation = handle.cancellation();
-                                                let (port, core) = crate::client::session(256);
+                                                let (port, core) = crate::run::session(256);
                                                 let core_commands = core.commands.clone();
                                                 let actor = RunActor::new(
                                                     dependencies.store.clone(),

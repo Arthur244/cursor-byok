@@ -3,7 +3,6 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{
-    client::{ClientCommand, ClientEvent, ClientSession, CommitCause},
     cursor::{
         blob_sync::BlobSynchronizer,
         checkpoint::{
@@ -26,7 +25,7 @@ use crate::{
         },
     },
     model::{ToolCall, ToolRoundId, Usage},
-    run::{RunFailure, RunOutcome},
+    run::{ClientCommand, ClientEvent, ClientSession, CommitCause, RunFailure, RunOutcome},
     store::{Store, ToolRoundStatus},
     Error, Result,
 };

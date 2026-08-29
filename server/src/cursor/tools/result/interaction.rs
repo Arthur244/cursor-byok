@@ -1,6 +1,6 @@
 use crate::{
     cursor::{interaction, proto::agent::v1 as pb},
-    web::{FetchedPage, SearchHit},
+    search::{FetchedPage, SearchHit},
     Error, Result,
 };
 
@@ -335,7 +335,7 @@ mod tests {
     use crate::{
         cursor::proto::agent::v1 as pb,
         model::ToolCall,
-        web::{FetchedPage, SearchHit},
+        search::{FetchedPage, SearchHit},
     };
 
     use super::{complete_web_fetch, complete_web_search, PendingInteraction};

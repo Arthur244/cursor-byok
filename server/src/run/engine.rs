@@ -4,10 +4,6 @@ use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    client::{
-        ClientCommand, ClientEvent, ClientPort, CommitBarrier, CommitCause, MessageInsertion,
-        StateCommitted,
-    },
     model::{
         CanonicalMessage, MessageContent, Origin, PreparedRun, Role, RunAction, ToolRoundAssistant,
         ToolRoundId, Usage,
@@ -16,7 +12,10 @@ use crate::{
     store::{RunStatus, Store},
 };
 
-use super::{consume_model_cycle, ModelCycleFailure, RunFailure, RunOutcome};
+use super::{
+    consume_model_cycle, ClientCommand, ClientEvent, ClientPort, CommitBarrier, CommitCause,
+    MessageInsertion, ModelCycleFailure, RunFailure, RunOutcome, StateCommitted,
+};
 
 const COMPACTION_RESERVE_TOKENS: u64 = 10_000;
 const COMPACTION_OUTPUT_TOKENS: u64 = 4_096;

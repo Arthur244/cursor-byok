@@ -32,7 +32,7 @@ async fn generic_run_registry_cancels_the_previous_client_for_a_conversation() {
             conversation.clone(),
             cursor_server::model::RunId::new("first"),
             first.clone(),
-            cursor_server::client::session(1).1.commands,
+            cursor_server::run::session(1).1.commands,
         )
         .await;
     registry
@@ -40,7 +40,7 @@ async fn generic_run_registry_cancels_the_previous_client_for_a_conversation() {
             conversation.clone(),
             cursor_server::model::RunId::new("second"),
             second.clone(),
-            cursor_server::client::session(1).1.commands,
+            cursor_server::run::session(1).1.commands,
         )
         .await;
 
