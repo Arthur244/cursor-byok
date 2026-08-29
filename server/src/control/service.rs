@@ -169,7 +169,7 @@ impl ControlService {
             .header(OS_HEADER, std::env::consts::OS)
             .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
             .header(LANGUAGE_HEADER, language)
-            .timeout(std::time::Duration::from_secs(5));
+            .timeout(std::time::Duration::from_secs(60));
         if let Some(disabled_ad_ids) = disabled_ad_ids.filter(|value| !value.is_empty()) {
             request = request.header(DISABLED_AD_IDS_HEADER, disabled_ad_ids);
         }

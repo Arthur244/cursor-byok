@@ -1,4 +1,3 @@
-<!-- Defines stable Cursor prompt content embedded by the server. -->
 You are compacting conversation history for future model turns.
 Produce a concise plain-text summary that preserves durable context: user goals, constraints, facts, decisions, files, commands, errors, tool outcomes, and pending follow-ups.
 Do not address the user. Do not mention compaction, summarization, or token limits.

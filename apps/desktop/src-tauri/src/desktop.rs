@@ -1,5 +1,5 @@
 use std::{
-    process::Command,
+    process::{Command, ExitCode},
     sync::{
         atomic::{AtomicBool, Ordering},
         Mutex,
@@ -19,7 +19,6 @@ use tauri::{
 };
 use tauri_plugin_opener::OpenerExt;
 use tokio_util::sync::CancellationToken;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[cfg(dev)]
 use cursor_server::config::ConsoleSource;
@@ -27,6 +26,7 @@ use cursor_server::{App, Config, Result};
 
 #[cfg(not(dev))]
 use crate::frontend;
+use crate::startup::{self, StartupDiagnostics};
 use crate::tray;
 
 pub(crate) const MAIN_WINDOW_LABEL: &str = "main";
@@ -141,16 +141,23 @@ fn create_main_window(
     builder.build()
 }
 
-pub fn run() {
-    let started_by_autostart = std::env::args_os().any(|arg| arg == AUTOSTART_ARG);
+pub fn run() -> ExitCode {
+    let diagnostics = match StartupDiagnostics::initialize() {
+        Ok(diagnostics) => diagnostics,
+        Err(error) => {
+            startup::report_logging_failure(error.as_ref());
+            return ExitCode::FAILURE;
+        }
+    };
+    tracing::info!(
+        version = env!("CARGO_PKG_VERSION"),
+        os = std::env::consts::OS,
+        architecture = std::env::consts::ARCH,
+        log_directory = %diagnostics.log_directory().display(),
+        "desktop starting"
+    );
 
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "cursor_server=info".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    let started_by_autostart = std::env::args_os().any(|arg| arg == AUTOSTART_ARG);
 
     let app = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![open_terminal_with_command])
@@ -218,8 +225,14 @@ pub fn run() {
             tray::create(app)?;
             Ok(())
         })
-        .build(tauri::generate_context!())
-        .expect("failed to build Cursor BYOK desktop app");
+        .build(tauri::generate_context!());
+    let app = match app {
+        Ok(app) => app,
+        Err(error) => {
+            diagnostics.report_fatal(&error);
+            return ExitCode::FAILURE;
+        }
+    };
 
     app.run(|app, event| match event {
         RunEvent::WindowEvent {
@@ -264,4 +277,6 @@ pub fn run() {
         } => tray::show_main_window(app),
         _ => {}
     });
+
+    ExitCode::SUCCESS
 }

@@ -28,7 +28,9 @@ impl Store {
             .max_connections(8)
             .connect_with(options)
             .await?;
+        tracing::info!("running database migrations");
         sqlx::migrate!("./migrations").run(&pool).await?;
+        tracing::info!("database migrations completed");
         Ok(Self {
             pool,
             writes: WriteCoordinator::default(),

@@ -1,4 +1,3 @@
-<!-- Defines stable Cursor prompt content embedded by the server. -->
 {{OPEN_FILES}}{{SELECTED_CONTEXT}}{{ACTION_CONTEXT}}<system_reminder>
 You are now in Multitask mode. You have EXITED your previous mode. Continue with the task in the new mode.
 </system_reminder>
