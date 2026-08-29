@@ -8,7 +8,7 @@ use sqlx::{
 
 use crate::Result;
 
-use super::writer::WriteCoordinator;
+use super::{migrations, writer::WriteCoordinator};
 
 #[derive(Clone)]
 pub struct Store {
@@ -24,13 +24,12 @@ impl Store {
             .journal_mode(SqliteJournalMode::Wal)
             .synchronous(SqliteSynchronous::Full)
             .busy_timeout(Duration::from_secs(5));
+        let database_path = options.get_filename().to_owned();
         let pool = SqlitePoolOptions::new()
             .max_connections(8)
             .connect_with(options)
             .await?;
-        tracing::info!("running database migrations");
-        sqlx::migrate!("./migrations").run(&pool).await?;
-        tracing::info!("database migrations completed");
+        migrations::run(&pool, &database_path).await?;
         Ok(Self {
             pool,
             writes: WriteCoordinator::default(),

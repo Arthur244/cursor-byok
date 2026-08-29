@@ -7,6 +7,7 @@ mod input_anchors;
 mod legacy_config;
 mod llm_calls;
 mod messages;
+mod migrations;
 mod models;
 mod overview;
 mod runs;

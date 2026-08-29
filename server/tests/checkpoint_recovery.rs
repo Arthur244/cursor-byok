@@ -19,7 +19,7 @@ use cursor_server::{
 use prost::Message;
 
 #[tokio::test]
-async fn applied_revision_schema_upgrades_to_checkpoints_without_losing_rows() {
+async fn v0_1_5_beta_1_schema_upgrades_to_checkpoints_without_losing_rows() {
     use std::borrow::Cow;
 
     use sqlx::{
@@ -42,11 +42,12 @@ async fn applied_revision_schema_upgrades_to_checkpoints_without_losing_rows() {
         )
         .await
         .unwrap();
-    let previous = Migrator {
-        migrations: Cow::Owned(ALL_MIGRATIONS.iter().take(5).cloned().collect()),
+    // v0.1.5-beta.1 shipped migrations 0001 through 0004.
+    let v0_1_5_beta_1 = Migrator {
+        migrations: Cow::Owned(ALL_MIGRATIONS.iter().take(4).cloned().collect()),
         ..Migrator::DEFAULT
     };
-    previous.run(&pool).await.unwrap();
+    v0_1_5_beta_1.run(&pool).await.unwrap();
 
     sqlx::query(
         "INSERT INTO conversations(conversation_id, updated_at_ms)

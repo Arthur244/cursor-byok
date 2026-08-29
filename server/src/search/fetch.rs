@@ -15,7 +15,7 @@ use reqwest::{
 use tokio::{net::lookup_host, time::timeout};
 use url::{Host, Url};
 
-use crate::store::Store;
+use crate::{search::WebCache, store::Store};
 
 const MAX_RESPONSE_SIZE: usize = 5 * 1024 * 1024;
 const MAX_REDIRECTS: usize = 5;

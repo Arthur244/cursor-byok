@@ -36,6 +36,12 @@ impl From<crate::Error> for RunFailure {
             Error::Http(error) => Self::Provider(error.to_string()),
             Error::Database(error) => Self::Store(error.to_string()),
             Error::Migration(error) => Self::Store(error.to_string()),
+            Error::MigrationTimeout {
+                stage,
+                timeout_seconds,
+            } => Self::Store(format!(
+                "database migration stage '{stage}' timed out after {timeout_seconds} seconds"
+            )),
             Error::Io(error) => Self::Store(error.to_string()),
             Error::Decode(error) => Self::Protocol(error.to_string()),
             Error::Encode(error) => Self::Protocol(error.to_string()),

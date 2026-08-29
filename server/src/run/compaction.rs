@@ -6,7 +6,6 @@ use crate::model::{
     CanonicalMessage, LlmCallUsageAnchor, PreparedRun, ProjectedMessage, RunAction,
 };
 
-const RESERVE_TOKENS: u64 = 10_000;
 const FALLBACK_CHARS: usize = 12_000;
 
 pub(super) const OUTPUT_TOKENS: u64 = 4_096;
@@ -41,7 +40,7 @@ pub(super) fn should_compact(
     let Some(context_window) = prepared.model.context_window_tokens else {
         return false;
     };
-    if context_window <= RESERVE_TOKENS || messages.len() <= prepared.initial_messages.len() {
+    if context_window == 0 || messages.len() <= prepared.initial_messages.len() {
         return false;
     }
     let estimated_input = anchor
@@ -62,7 +61,7 @@ pub(super) fn should_compact(
                 &serde_json::to_string(&(&prepared.prompt, messages)).unwrap_or_default(),
             )
         });
-    estimated_input > context_window.saturating_sub(RESERVE_TOKENS)
+    estimated_input > context_window
 }
 
 pub(super) fn partition(
@@ -108,4 +107,67 @@ fn estimate_serialized_tokens(serialized: &str) -> u64 {
             units.saturating_add(if character.is_ascii() { 273 } else { 550 })
         })
         .div_ceil(1_000)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{
+        project_messages, CheckpointId, ConversationId, ModelSpec, Origin, PromptSpec, Role, RunId,
+        RunKind,
+    };
+
+    #[test]
+    fn automatic_compaction_starts_only_after_the_context_window_is_exceeded() {
+        let mut model = ModelSpec::new("model");
+        model.context_window_tokens = Some(200_000);
+        let prepared = PreparedRun {
+            run_id: RunId::new("run"),
+            cursor_request_id: None,
+            conversation_id: ConversationId::new("conversation"),
+            kind: RunKind::Root,
+            model,
+            prompt: PromptSpec {
+                instructions: String::new(),
+                tools: Vec::new(),
+            },
+            initial_messages: Vec::new(),
+            action: RunAction::Start,
+            base_checkpoint_id: CheckpointId(1),
+        };
+        let messages = vec![CanonicalMessage::text(
+            "user",
+            Role::User,
+            Origin::Runtime,
+            "hello",
+        )];
+        let projected = project_messages(&messages).unwrap();
+        let tail_tokens = estimate_serialized_tokens(&serde_json::to_string(&projected).unwrap());
+        let anchor = |estimated_input| {
+            Some(ContextUsageAnchor {
+                input_tokens: estimated_input - tail_tokens,
+                message_count: 0,
+                tool_count: 0,
+            })
+        };
+
+        assert!(!should_compact(
+            &prepared,
+            &messages,
+            &projected,
+            anchor(199_999)
+        ));
+        assert!(!should_compact(
+            &prepared,
+            &messages,
+            &projected,
+            anchor(200_000)
+        ));
+        assert!(should_compact(
+            &prepared,
+            &messages,
+            &projected,
+            anchor(200_001)
+        ));
+    }
 }
