@@ -1,468 +1,722 @@
-# Cursor BYOK 架构重构交接
-
-## 使用方式
-
-这是新对话的完整交接上下文。开始工作前：
-
-1. 阅读根目录 `AGENTS.md`。
-2. 阅读 `.agents/skills/cursor-prefix-stability/SKILL.md`。
-3. 查看 `git status` 和当前 feature 分支最新提交。
-4. 不要直接开始大规模移动 `server/src/cursor`；先完成本文“第一阶段测试护栏”。
-
-## 本轮目标
-
-本次不是功能缩减，而是代码模块消除和状态机收敛：
-
-- 保留当前 Cursor Proto、工具、Checkpoint、恢复、打断、后台完成、子 Task、本地 BYOK 和官方上游转发能力。
-- 以 `conversation_id` 为 Cursor 协议的核心状态身份。
-- `request_id` 只作为可能重复的传输关联 ID，不能作为 Conversation、Run、Session 或 Trace 的唯一身份。
-- 将 Cursor 生命周期收敛为一个状态写入者。
-- 目录即架构，减少顶层模块数量，明确核心和扩展边界。
-- 面向多人协作，禁止跨目录访问内部实现。
-
-## 当前阶段已经完成的代码
-
-本 feature 分支当前提交的是第一轮目录与模块整理，不包含后续 Conversation 状态机重写：
-
-- Cursor Proto 唯一来源收敛到 `protocols/cursor/`。
-- 根目录开发辅助工具统一移动到 `support/`：
-  - `support/cursor-protocol-extractor/`
-  - `support/cursor-capture/`
-  - `support/benchmarks/`
-- Desktop 前端按架构整理为：
-  - `apps/desktop/src/features/`
-  - `apps/desktop/src/shell/`
-  - `apps/desktop/src/shared/`
-- Server 的通用客户端端口并入 `server/src/run/`。
-- `server/src/web/` 重命名为 `server/src/search/`。
-- 模型观测数据结构聚合为 `server/src/model/observability.rs`。
-- Release 辅助脚本移动到 `.github/scripts/`。
-- 老配置导入能力保留，不应在后续重构中误删。
-
-已完成过的验证：
-
-- Workspace `cargo check` 通过。
-- Desktop build 通过。
-- `support/benchmarks/semble` crate check 通过。
-- Cursor 生命周期相关测试曾通过：interrupt 12、error lifecycle 4、background completion 5、connect wire 6。
-
-重新工作时仍需基于当前提交再次运行针对性验证，不能只依赖上述历史结果。
-
-## 需要保留但未提交的独立工作区修改
-
-`apps/docs/scripts/build-product-demo.mjs` 有一个独立的 Windows `spawnSync(..., shell: true)` 修正。它不属于本次架构提交，已从提交中排除；不要覆盖或删除。
-
-## 当前实现规模
-
-`server/src/cursor` 当前约 64 个 Rust 文件、约 1.9 万行。
-
-主要分布：
-
-| 模块 | 文件数 | 行数约 |
-|---|---:|---:|
-| `tools/` | 26 | 6382 |
-| `request/` | 7 | 2785 |
-| `checkpoint/` | 7 | 1159 |
-| `interaction/` | 3 | 1105 |
-| `session.rs` | 1 | 868 |
-| `projection/` | 4 | 796 |
-
-问题不是协议服务太复杂，而是同一条生命周期被多个模块分段持有。
-
-## 当前协议链路
+以下是重构后完整目标版本
+实现时，先创建所有目录和文件固化，每个文件头部都写好注释再实现
+旧服务已被备份为server_backup,/Users/leokun/Documents/cursor-byok/server 目录已创建
+行数均为目标估算，使用 `≈` 标记；不包含测试、生成代码和空行。
+实现时可做略微调整，测试要求相对于目标文件旁边的独立文件，禁止码内测试
+本文档目录 /Users/leokun/Documents/cursor-byok/cursor.md
+## 完整目录
 
 ```text
-Cursor BidiAppend
-→ handlers.rs 选择 local/upstream
-→ bidi_append.rs 解码 AgentClientMessage
-→ CursorSessionRegistry.get_or_create(request_id)
-→ CursorActor：append 排序、协议消息分发、Run 启动
-→ CursorSession：Run/Tool/Checkpoint/Interrupt 协调
-→ RunActor / RunEngine：通用模型循环和历史提交
-→ OutputHub
-→ RunSSE
+server/
+├── src/                                        # ≈36,000 行；服务端全部业务代码
+│   ├── app.rs                                  # ≈180 行；依赖组装和服务启动
+│   ├── config.rs                               # ≈180 行；进程配置
+│   ├── error.rs                                # ≈150 行；统一错误
+│   ├── network.rs                              # ≈100 行；网络公共配置
+│   │
+│   ├── bin/                                    # ≈100 行；可执行程序入口
+│   │   └── cursor-server.rs                    # ≈100 行；启动服务
+│   │
+│   ├── api/                                    # ≈1,500 行；HTTP/Connect API
+│   │   ├── mod.rs                              # ≈20 行；模块导出
+│   │   ├── router.rs                           # ≈100 行；总路由
+│   │   └── cursor/                             # ≈1,350 行；Cursor API
+│   │       ├── mod.rs                          # ≈20 行；Cursor 路由
+│   │       ├── bidi.rs                         # ≈250 行；上行请求
+│   │       ├── run_sse.rs                      # ≈300 行；下行订阅
+│   │       ├── handlers.rs                     # ≈450 行；其他 Cursor API
+│   │       └── proxy.rs                        # ≈330 行；本地/官方服务选择
+│   │
+│   ├── cursor/                                 # ≈18,000 行；Cursor Agent 适配层
+│   │   ├── mod.rs                              # ≈40 行；公共导出
+│   │   │
+│   │   ├── transport/                          # ≈800 行；request_id 双向通道
+│   │   │   ├── mod.rs                          # ≈20 行；模块导出
+│   │   │   ├── registry.rs                     # ≈220 行；request_id → TransportHandle
+│   │   │   ├── handle.rs                       # ≈200 行；输入、订阅和终态
+│   │   │   ├── inbox.rs                        # ≈70 行；append_seqno 排序
+│   │   │   └── output.rs                       # ≈290 行；缓存、广播、重放、关闭
+│   │   │
+│   │   ├── conversation/                       # ≈1,600 行；Conversation 运行协调
+│   │   │   ├── mod.rs                          # ≈30 行；公共类型
+│   │   │   ├── registry.rs                     # ≈220 行；conversation_id → Runtime
+│   │   │   ├── runtime.rs                      # ≈500 行；current_run 唯一所有者
+│   │   │   ├── command.rs                      # ≈120 行；Start/Action/Cancel/Disconnect
+│   │   │   ├── delivery.rs                     # ≈280 行；Ignore/Insert/Break
+│   │   │   ├── pending.rs                      # ≈150 行；Run 边界上的待处理消息
+│   │   │   └── output.rs                       # ≈300 行；RunEvent 下行及 Step 记录
+│   │   │
+│   │   ├── compile/                            # ≈2,700 行；Cursor 输入编译
+│   │   │   ├── mod.rs                          # ≈30 行；统一入口
+│   │   │   ├── run.rs                          # ≈650 行；RunRequest → PreparedRun
+│   │   │   ├── context.rs                      # ≈650 行；rules/skills/MCP/environment
+│   │   │   ├── action.rs                       # ≈250 行；Action 分类和路由
+│   │   │   ├── insert_messages.rs              # ≈400 行；非打断消息
+│   │   │   ├── break_messages.rs               # ≈400 行；打断当前 cycle 的消息
+│   │   │   ├── images.rs                       # ≈100 行；图片和 Blob
+│   │   │   └── model.rs                        # ≈220 行；Cursor model → Provider model
+│   │   │
+│   │   ├── checkpoint/                         # ≈2,200 行；Conversation 持久化和恢复
+│   │   │   ├── mod.rs                          # ≈30 行；公共接口
+│   │   │   ├── builder.rs                      # ≈280 行；构建 Checkpoint
+│   │   │   ├── steps.rs                        # ≈120 行；尚未持久化的步骤缓存
+│   │   │   ├── turns.rs                        # ≈150 行；Conversation turns
+│   │   │   ├── roots.rs                        # ≈150 行；稳定根消息
+│   │   │   ├── recovery.rs                     # ≈100 行；恢复 Conversation
+│   │   │   ├── summary.rs                      # ≈120 行；压缩摘要
+│   │   │   ├── derived.rs                      # ≈220 行；Todo/Plan 等派生状态
+│   │   │   ├── worker.rs                       # ≈250 行；异步持久化和 barrier
+│   │   │   └── messages/                       # ≈800 行；Message 编解码
+│   │   │       ├── mod.rs                      # ≈20 行；统一入口
+│   │   │       ├── decode.rs                   # ≈250 行；Checkpoint → Message
+│   │   │       ├── encode.rs                   # ≈280 行；Message → Checkpoint
+│   │   │       └── tests.rs                    # ≈250 行；稳定性测试
+│   │   │
+│   │   ├── tools/                              # ≈6,500 行；可扩展 Tool 系统
+│   │   │   ├── mod.rs                          # ≈180 行；公共类型和注册
+│   │   │   ├── registry.rs                     # ≈180 行；Tool 定义
+│   │   │   ├── runtime.rs                      # ≈420 行；运行状态和取消
+│   │   │   ├── stream.rs                       # ≈350 行；流式参数
+│   │   │   ├── edit.rs                         # ≈340 行；编辑状态
+│   │   │   ├── schedule.rs                     # ≈100 行；后台任务调度
+│   │   │   ├── compat.rs                       # ≈150 行；兼容工具转换
+│   │   │   │
+│   │   │   ├── codec/                          # ≈1,750 行；Tool Wire Protocol
+│   │   │   │   ├── mod.rs                      # ≈20 行；模块导出
+│   │   │   │   ├── request.rs                  # ≈520 行；执行请求编码
+│   │   │   │   ├── response.rs                 # ≈360 行；执行响应编码
+│   │   │   │   ├── query.rs                    # ≈250 行；InteractionQuery
+│   │   │   │   └── render.rs                   # ≈600 行；Cursor Tool 卡片
+│   │   │   │
+│   │   │   ├── tool_call_dispatch/             # ≈700 行；ToolCall 分发
+│   │   │   │   ├── mod.rs                      # ≈260 行；主 Dispatcher
+│   │   │   │   ├── exec.rs                     # ≈80 行；命令执行
+│   │   │   │   ├── edit.rs                     # ≈40 行；编辑调用
+│   │   │   │   ├── interaction.rs              # ≈260 行；用户交互
+│   │   │   │   ├── local.rs                    # ≈30 行；本地工具
+│   │   │   │   └── search.rs                   # ≈40 行；搜索工具
+│   │   │   │
+│   │   │   └── tool_call_result/               # ≈3,000 行；ToolResult 消费
+│   │   │       ├── mod.rs                      # ≈180 行；统一结果
+│   │   │       ├── gate.rs                     # ≈850 行；完成关联和门控
+│   │   │       ├── interaction.rs              # ≈450 行；用户交互结果
+│   │   │       ├── local.rs                    # ≈220 行；本地工具结果
+│   │   │       ├── mcp.rs                      # ≈80 行；MCP 结果
+│   │   │       ├── mcp_state.rs                # ≈150 行；MCP 状态
+│   │   │       ├── search.rs                   # ≈150 行；搜索结果
+│   │   │       └── exec/                       # ≈920 行；命令执行结果
+│   │   │           ├── mod.rs                   # ≈180 行；执行结果入口
+│   │   │           ├── output.rs                # ≈500 行；输出处理
+│   │   │           └── render.rs                # ≈240 行；结果渲染
+│   │   │
+│   │   ├── protocol/                           # ≈600 行；非 Tool Wire Protocol
+│   │   │   ├── mod.rs                          # ≈20 行；模块导出
+│   │   │   ├── proto.rs                        # ≈80 行；protobuf 类型
+│   │   │   ├── connect.rs                      # ≈150 行；Connect framing
+│   │   │   ├── json_stream.rs                  # ≈280 行；JSON 流
+│   │   │   └── events.rs                       # ≈300 行；实时下行消息
+│   │   │
+│   │   ├── prompting/                          # ≈650 行；Prompt 编译
+│   │   │   ├── mod.rs                          # ≈20 行；模块导出
+│   │   │   ├── compiler.rs                     # ≈120 行；PromptSpec 编译
+│   │   │   ├── catalog.rs                      # ≈100 行；Prompt 目录
+│   │   │   ├── assets.rs                       # ≈220 行；资源加载
+│   │   │   └── derived_state.rs                # ≈190 行；稳定派生上下文
+│   │   │
+│   │   └── services/                           # ≈2,800 行；非 Agent Loop 服务
+│   │       ├── mod.rs                          # ≈30 行；模块导出
+│   │       ├── account.rs                      # ≈470 行；账号信息
+│   │       ├── analytics.rs                    # ≈240 行；Analytics
+│   │       ├── blob_sync.rs                    # ≈320 行；Blob 同步
+│   │       ├── context_sync.rs                 # ≈200 行；上下文同步
+│   │       ├── model_catalog.rs                # ≈730 行；模型目录
+│   │       ├── observability.rs                # ≈230 行；Cursor Trace
+│   │       ├── tab.rs                          # ≈80 行；Tab 信息
+│   │       └── usage.rs                        # ≈350 行；用量统计
+│   │
+│   ├── run/                                    # ≈2,400 行；通用 Agent Loop
+│   │   ├── mod.rs                              # ≈30 行；公共接口
+│   │   ├── engine.rs                           # ≈550 行；Loop 主流程
+│   │   ├── handle.rs                           # ≈180 行；RunHandle/RunPhase
+│   │   ├── command.rs                          # ≈180 行；RunCommand/CommandResult
+│   │   ├── event.rs                            # ≈180 行；RunEvent/RunOutcome
+│   │   ├── model_cycle.rs                      # ≈380 行；单次 LLM 调用
+│   │   ├── tool_round.rs                       # ≈320 行；单轮 Tool 调用
+│   │   ├── messages.rs                         # ≈220 行；幂等追加消息
+│   │   ├── compaction.rs                       # ≈260 行；显式上下文压缩
+│   │   └── port.rs                             # ≈100 行；外部端口
+│   │
+│   ├── model/                                  # ≈1,900 行；公共数据类型
+│   │   ├── mod.rs                              # ≈30 行；模块导出
+│   │   ├── conversation.rs                     # ≈100 行；Conversation 类型
+│   │   ├── checkpoint.rs                       # ≈80 行；Checkpoint 类型
+│   │   ├── message.rs                          # ≈180 行；Message 类型
+│   │   ├── run.rs                              # ≈100 行；Run 类型
+│   │   ├── tool.rs                             # ≈100 行；ToolCall/ToolResult
+│   │   ├── inference.rs                        # ≈150 行；模型请求和响应
+│   │   ├── projection.rs                       # ≈180 行；Provider 输入消息
+│   │   ├── configuration.rs                    # ≈550 行；模型配置
+│   │   ├── observability.rs                    # ≈300 行；调用观测
+│   │   ├── token_count.rs                      # ≈50 行；Token 统计
+│   │   └── tool_result_replay.rs               # ≈230 行；ToolResult 恢复
+│   │
+│   ├── provider/                               # ≈3,000 行；Provider 适配
+│   │   ├── mod.rs                              # ≈80 行；Provider trait
+│   │   ├── router.rs                           # ≈230 行；Provider 路由
+│   │   ├── event.rs                            # ≈100 行；统一流事件
+│   │   ├── normalize.rs                        # ≈50 行；响应归一化
+│   │   ├── retry.rs                            # ≈270 行；重试
+│   │   ├── recorder.rs                         # ≈600 行；调用记录
+│   │   ├── anthropic.rs                        # ≈500 行；Anthropic
+│   │   ├── openai_chat.rs                      # ≈580 行；Chat Completions
+│   │   └── openai_responses.rs                 # ≈650 行；Responses
+│   │
+│   ├── store/                                  # ≈4,100 行；本地持久化
+│   │   ├── mod.rs                              # ≈40 行；Store 接口
+│   │   ├── sqlite.rs                           # ≈60 行；SQLite 初始化
+│   │   ├── writer.rs                           # ≈30 行；串行写事务
+│   │   ├── cas.rs                              # ≈120 行；并发写检查
+│   │   ├── conversations.rs                    # ≈180 行；Conversation
+│   │   ├── checkpoints.rs                      # ≈400 行；Checkpoint
+│   │   ├── messages.rs                         # ≈150 行；Message 和幂等
+│   │   ├── runs.rs                             # ≈300 行；Run
+│   │   ├── tool_rounds.rs                      # ≈330 行；Tool Round
+│   │   ├── input_anchors.rs                    # ≈60 行；输入去重
+│   │   ├── llm_calls.rs                        # ≈650 行；LLM 调用记录
+│   │   ├── models.rs                           # ≈430 行；模型配置
+│   │   ├── settings.rs                         # ≈430 行；应用设置
+│   │   ├── storage.rs                          # ≈230 行；Blob 存储
+│   │   ├── cursor_traces.rs                    # ≈400 行；Cursor Trace
+│   │   └── overview.rs                         # ≈350 行；控制台查询
+│   │
+│   ├── control/                                # ≈2,100 行；管理端 API
+│   │   ├── mod.rs                              # ≈30 行；模块导出
+│   │   ├── service.rs                          # ≈500 行；管理端服务
+│   │   ├── settings.rs                         # ≈350 行；设置接口
+│   │   ├── models.rs                           # ≈350 行；模型接口
+│   │   ├── overview.rs                         # ≈300 行；概览
+│   │   ├── calls.rs                            # ≈250 行；调用记录
+│   │   ├── ads.rs                              # ≈150 行；广告配置
+│   │   └── harness.rs                          # ≈170 行；Harness 控制
+│   │
+│   ├── search/                                 # ≈1,400 行；搜索能力
+│   │   ├── mod.rs                              # ≈30 行；模块导出
+│   │   ├── engine.rs                           # ≈350 行；搜索入口
+│   │   ├── catalog.rs                          # ≈250 行；搜索服务目录
+│   │   ├── federation.rs                       # ≈280 行；聚合搜索
+│   │   ├── fetch.rs                            # ≈250 行；网页获取
+│   │   └── search_provider.rs                  # ≈240 行；搜索 Provider
+│   │
+│   └── local_app/                              # ≈1,000 行；本地运行环境
+│       ├── mod.rs                              # ≈100 行；local_app 入口（原Harness）
+│       ├── account.rs                          # ≈150 行；账号
+│       ├── proxy.rs                            # ≈250 行；代理
+│       ├── settings.rs                         # ≈200 行；设置
+│       └── ca/                                 # ≈300 行；证书
+│           ├── mod.rs                          # ≈250 行；CA 实现
+│           └── windows.rs                      # ≈50 行；Windows 支持
+│
+└── tests/                                      # ≈3,500 行；跨模块行为测试
+    ├── conversation_delivery.rs                # ≈400 行；消息投递时序
+    ├── interrupt.rs                            # ≈400 行；Break 和取消
+    ├── error_lifecycle.rs                      # ≈300 行；终态唯一性
+    ├── checkpoint_recovery.rs                  # ≈350 行；恢复
+    ├── prefix_stability.rs                     # ≈450 行；前缀稳定
+    ├── compaction.rs                           # ≈300 行；压缩
+    ├── tool_round.rs                           # ≈450 行；Tool Round
+    └── connect_wire.rs                         # ≈300 行；Wire Protocol
 ```
 
-主要客户端消息类型：
-
-- `RunRequest`
-- `ExecClientMessage`
-- `ExecClientControlMessage`
-- `KvClientMessage`
-- `ConversationAction`
-- `InteractionResponse`
-- `ClientHeartbeat`
-
-运行时 Action：
-
-- `UserMessageAction`：软打断并继续当前 Conversation。
-- `InjectContextAction`：软打断、追加运行时事件并继续。
-- `CancelAction`：硬取消活动 Run。
-- `CancelSubagentAction`：终止对应的普通子 Task 工具调用，不改变父 Conversation 生命周期。
-
-主要服务端消息类型：
-
-- `InteractionUpdate`
-- `InteractionQuery`
-- `ExecServerMessage`
-- `ExecServerControlMessage`
-- `ConversationCheckpointUpdate`
-- Connect terminal frame
-
-## 已确认的身份语义
-
-| 身份 | 语义与约束 |
-|---|---|
-| `conversation_id` | 持久化 Conversation 的唯一核心身份 |
-| `ParentConversationRef` | 子 Conversation 的不可变创建来源 |
-| internal `run_id` | 服务端一次循环引擎执行，全局唯一 |
-| Cursor `run_id` | `AgentRunRequest.run_id`，用于 `expected_run_id` 等 wire 关联 |
-| `agent_session_id` | Cursor Agent 会话实例 |
-| `request_id` | BidiAppend 与 RunSSE 的可重复传输关联 ID |
-| `append_seqno` | 一个传输代次内的顺序，不是身份 |
-| `message_id` / `injection_id` | 事件幂等身份 |
-| `trace_id` | 一次链路观测的服务端唯一身份 |
-
-身份约束：
-
-- `request_id → conversation_id` 必须强关联。
-- 同一个 `request_id` 可以在同一个 Conversation 内因重试或队列再次出现。
-- 同一个 `request_id` 如果绑定到不同 Conversation，必须报协议冲突。
-- 并发重复且 wire 无法区分时应拒绝冲突，不能猜测路由。
-- 缺少 `conversation_id` 时，只能使用已经存在的 request binding；禁止回退到 `request_id`。
-- `InjectContextAction.expected_run_id` 应比较 Cursor wire `run_id`，不能比较 `request_id`。
-
-## ParentConversationRef 决策
-
-任何根或子 Task 都是独立 Conversation。Conversation 不维护 children，不订阅子状态，不管理子生命周期。
-
-父 Conversation 只看到一次普通 ToolCall。子 Conversation 只保存不可变的创建溯源：
-
-```rust
-struct ParentConversationRef {
-    parent_conversation_id: ConversationId,
-    parent_run_id: RunId,
-    parent_tool_call_id: ToolCallId,
-}
-```
-
-三个字段都必须保留：
-
-- `parent_conversation_id`：属于哪条 Conversation 链。
-- `parent_run_id`：父 Conversation 的哪次服务端 Run 创建。
-- `parent_tool_call_id`：哪次普通 ToolCall 创建。
-
-它不表示父子状态管理，也不应形成内存 children 树。
-
-## 当前高风险点
-
-### P0：request_id 被错误提升为核心身份
-
-- `CursorSessionRegistry.runs` 使用 `HashMap<request_id, CursorSessionHandle>`。
-- RunSSE 使用 request ID 查找和等待路由。
-- Trace 表使用 `request_id TEXT PRIMARY KEY`。
-- 父 Run 通过 `active_run_for_cursor_request(request_id)` 查找最近活动 Run。
-- `request::prepare` 在缺失 Conversation ID 时回退到 request ID。
-
-### P0：Wire Run 身份没有进入生命周期
-
-- `AgentRunRequest.run_id`、`agent_session_id` 基本未使用。
-- 内部 RunId 当前由 `request_id + UUID` 生成。
-- `InjectContextAction.expected_run_id` 当前错误地与 `context.request_id` 比较。
-
-### P0：生命周期有多个写入者
-
-以下模块都能直接 cancel token、关闭 output 或发送 terminal：
-
-- `bidi_append.rs`
-- `actor.rs`
-- `session.rs`
-- `run_sse.rs`
-- `sessions.rs`
-- `lifecycle.rs`
-- 通用 `RunEngine` 还会独立产生 `RunOutcome`
-
-可能导致终态竞争、terminal 重复、错误原因不稳定。
-
-### P0：Actor 与 Session 是重叠事件循环
-
-- Actor 管 wire 输入、排序、工具回传和 runtime action。
-- Session 管 Run 事件、工具状态、Checkpoint、interrupt 和 terminal。
-- RunEngine 内还有第三层模型循环。
-
-### P1：Transport 与 Run 生命周期绑定
-
-- 当前 RunSSE Drop 会直接取消共享 Run token。
-- 正确语义应为 `SSE disconnect = DetachTransport`，而不是必然 Cancel Run。
-
-### P1：旁路状态
-
-- `cancelled_conversations: HashSet<String>` 与 Store、RunOutcome、CancellationToken 平行存在。
-- OutputHub 可以重放，但 Handle 关闭后 Registry 很快删除；晚到 RunSSE 可能永久等待。
-- `CancelAction` 在 BidiAppend 和 Actor 两处处理。
-- `CursorCommand::Abort` 没有生产发送者，主要只在测试中使用。
-- `ClientCommand::Cancel` 没有 Cursor 生产发送者。
-
-## 受保护的历史不变量
-
-后续移动 `request / projection / checkpoint / run` 时，必须保持：
-
-- 未发生 compaction 时，第 N 轮 provider history 是第 N+1 轮的严格结构前缀。
-- 旧消息不能编辑、合并、重排或重新生成。
-- request context 是 append-only 事件；内容相同不重复追加，变化时在本轮 runtime message 前追加。
-- `A → B → A` 必须保留三个不同事件；同一事件重试必须幂等。
-- Checkpoint encode/decode 必须保留 request-context wire identity。
-- 自动 compaction 是显式前缀重置，只保留最新 request context。
-- 后台完成和注入不能制造重复 request context。
-
-## 目标状态模型
-
-Conversation 本身没有 Completed/Cancelled 终态，结束的是 Run：
+## 顶层架构
 
 ```text
-Idle
-→ Preparing
-→ Modeling
-↔ WaitingTools
-→ Interrupting → Modeling
-→ Checkpointing
-→ Finalizing
-→ Idle
+                              Cursor Client
+                    ┌──────────────┴──────────────┐
+                    │                             │
+                Bidi 上行                     RunSSE 下行
+                    │                             ▲
+                    ▼                             │
+          ┌──────────────────────┐                │
+          │ Transport            │                │
+          │                      │                │
+          │ request_id           │                │
+          │ OrderedInbox         │                │
+          │ OutputHub ────────────────────────────┘
+          └──────────┬───────────┘
+                     │
+                     │ conversation_id
+                     ▼
+        ┌──────────────────────────────┐
+        │ ConversationRegistry         │
+        │                              │
+        │ conversation_id              │
+        │ → ConversationRuntime        │
+        └──────────────┬───────────────┘
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Conversation                                                │
+│                                                             │
+│ Messages                                                    │
+│ current_run: Option<RunHandle>                               │
+│ pending_messages                                            │
+│ Checkpoint                                                  │
+│ Transport bindings                                          │
+│                                                             │
+│ 唯一负责：                                                  │
+│ 创建 Run / 投递 Message / Cancel / RunOutcome / 输出终态    │
+└──────────────┬────────────────┬─────────────────────────────┘
+               │                │
+         RunCommand            Checkpoint
+               │                │
+               ▼                ▼
+      ┌─────────────────┐   ┌──────────────────────┐
+      │ RunEngine       │   │ CheckpointBuilder    │
+      │                 │   │                      │
+      │ Model Cycle     │   │ Messages             │
+      │ Tool Round      │   │ Turns                │
+      │ Message Append  │   │ Steps                │
+      │ Compaction      │   │ Derived State        │
+      └────────┬────────┘   └──────────┬───────────┘
+               │                       │
+        ┌──────┴───────┐               ▼
+        │              │        ┌──────────────────┐
+        ▼              ▼        │ Store            │
+    Provider      Tool Runtime   │                  │
+        │              │        │ Conversations    │
+        └──────┬───────┘        │ Messages         │
+               │                │ Checkpoints      │
+               └───────────────→│ Runs             │
+                                │ Tool Rounds       │
+                                └──────────────────┘
 ```
 
-唯一生命周期写入位置：
+## 上行主链路
 
 ```text
-server/src/cursor/conversation/runtime.rs
+BidiAppendRequest
+        │
+        ▼
+api/cursor/bidi.rs
+├── decode request_id
+├── decode append_seqno
+└── decode AgentClientMessage
+        │
+        ▼
+TransportRegistry
+        │
+        ▼
+OrderedInbox
+        │
+        ▼
+compile/action.rs
+        │
+        ├── Ignore
+        ├── InsertMessages
+        └── BreakMessages
+        │
+        ▼
+ConversationRuntime
+        │
+        ▼
+current_run
 ```
 
-建议模型：
-
-```rust
-struct ConversationRuntime {
-    identity: ConversationIdentity,
-    active_run: Option<ActiveRun>,
-    request_bindings: RequestBindings,
-}
-
-struct ConversationIdentity {
-    conversation_id: ConversationId,
-    parent: Option<ParentConversationRef>,
-}
-
-enum ConversationState {
-    Idle,
-    Active(ActiveRunState),
-}
-
-enum ActiveRunPhase {
-    Preparing,
-    Modeling,
-    WaitingTools,
-    Interrupting,
-    Checkpointing,
-    Finalizing,
-}
-```
-
-所有其他模块只能向它发送命令或事件，不能直接关闭输出或修改生命周期。
-
-## 目标目录
+## 下行主链路
 
 ```text
-protocols/
-└── cursor/                         # Proto 唯一来源
-
-server/src/cursor/
-├── mod.rs                          # 只组合模块
-├── protocol/                       # wire 类型与编解码
-│   ├── mod.rs
-│   ├── proto.rs
-│   ├── wire.rs
-│   └── identity.rs
-├── gateway/                        # HTTP/Bidi/SSE 入口
-│   ├── mod.rs
-│   ├── bidi.rs
-│   ├── stream.rs
-│   └── routing.rs
-├── conversation/                   # 唯一核心状态域
-│   ├── mod.rs
-│   ├── identity.rs
-│   ├── registry.rs
-│   ├── state.rs
-│   ├── runtime.rs                  # 唯一生命周期写入者
-│   ├── output.rs
-│   ├── sync.rs
-│   └── history/
-│       ├── request/
-│       ├── projection/
-│       └── checkpoint/
-├── tools/                          # 可扩展普通工具能力
-│   ├── mod.rs                      # ToolPort
-│   ├── codec.rs
-│   ├── runtime.rs
-│   ├── dispatch.rs
-│   ├── completion.rs
-│   ├── presentation.rs
-│   ├── edit.rs
-│   └── subtask.rs
-├── prompting/                      # 无状态确定性编译
-│   ├── mod.rs
-│   ├── compiler.rs
-│   └── assets.rs
-├── apis/                           # 可替换产品能力
-│   ├── mod.rs
-│   ├── upstream.rs
-│   ├── account.rs
-│   ├── models.rs
-│   ├── analytics.rs
-│   └── tab.rs
-└── observability.rs                # 只观察，不写生命周期
+RunEvent
+   │
+   ▼
+conversation/output.rs
+   │
+   ├── protocol/events.rs
+   │       │
+   │       ▼
+   │   AgentServerMessage
+   │       │
+   │       ▼
+   │   Transport OutputHub
+   │       │
+   │       ▼
+   │     RunSSE
+   │
+   └── checkpoint/steps.rs
+           │
+           ▼
+       StepBuffer
+           │
+           ▼
+       CheckpointWorker
 ```
 
-顶层架构概念最终收敛为：
+## Message 编译
 
 ```text
-protocol
-gateway
-conversation
-tools
-prompting
-apis
-observability
+Cursor Action
+     │
+     ▼
+compile/action.rs
+     │
+     ▼
+CompiledMessages
+├── event_id
+├── target_run_id
+├── messages
+└── delivery
+     │
+     ├── Ignore
+     ├── InsertMessages
+     └── BreakMessages
 ```
 
-## 核心与扩展边界
-
-核心：
-
-- Conversation identity 与 ParentConversationRef。
-- RequestBinding 一致性。
-- 单一生命周期状态机。
-- canonical history、projection、checkpoint 与恢复。
-- RunEngine 端口。
-- terminal exactly-once。
-
-允许扩展：
-
-- 具体 Tool 实现，包括子 Task Tool。
-- Cursor 官方上游代理。
-- Account、Models、Analytics、Tab 等产品 API。
-- Provider。
-- Presentation 和 Observability sink。
-
-Conversation 核心只认识 `ToolCall / ToolResult / ToolInterrupted`，不能认识或保存子 Conversation 状态。
-
-## 模块消除映射
-
-| 当前 | 目标 |
-|---|---|
-| `actor.rs + session.rs + command.rs + lifecycle.rs + inbox.rs` | `conversation/runtime.rs + state.rs` |
-| `sessions.rs` | `conversation/registry.rs + output.rs` |
-| `handlers.rs + bidi_append.rs + run_sse.rs` | `gateway/` |
-| `connect.rs + proto.rs` | `protocol/` |
-| `blob_sync.rs + context_sync.rs` | `conversation/sync.rs` |
-| `request + projection + checkpoint` | `conversation/history/`，保留语义 |
-| `interaction + json_stream + presentation + tools/stream` | `tools/presentation.rs + codec.rs` |
-| `tools/dispatch/* + tools/result/*` | `dispatch.rs + completion.rs` |
-| `proxy/account/model_catalog/analytics/tab` | `apis/` |
-
-最终应删除：
-
-- `cancelled_conversations` 旁路状态。
-- `CursorCommand::Finished`。
-- 无生产用途的 `CursorCommand::Abort`。
-- 多处 `lifecycle::finish/cancel/fail`。
-- 旧路径和兼容 re-export。
-
-## 安全实施顺序
-
-### 第一阶段：测试护栏，不移动目录
-
-先增加行为测试：
-
-- 同 request、同 Conversation、同事件：幂等。
-- 同 request、同 Conversation、新 Cursor run：正确建立新代次。
-- 同 request、不同 Conversation：协议冲突。
-- `expected_run_id` 使用 wire run ID。
-- ParentConversationRef 三字段准确并可持久恢复。
-- RunSSE 先到、重连、晚到。
-- cancel 发生在 prepare/model/tools/checkpoint 各阶段。
-- soft interrupt 继续同一 Conversation。
-- late ToolResult 不污染新一轮。
-- final checkpoint 必须先于 terminal。
-- terminal frame 恰好一次。
-- SSE detach 与 CancelAction 独立。
-
-### 第二阶段：身份收敛
-
-- 引入强类型 ID。
-- 消费 `AgentRunRequest.run_id` 和 `agent_session_id`。
-- 建立 RequestBinding，不再假设 request ID 唯一。
-- 删除 Conversation ID fallback。
-- ParentConversationRef 改为三元组并持久化。
-- Trace 使用独立 `trace_id`，不再以 request ID 为主键。
-- 不修改工具、Checkpoint 或输出 wire 行为。
-
-### 第三阶段：ConversationRegistry
-
-- Registry 以 Conversation ID 为主键。
-- request ID 仅作为反向路由索引。
-- RunSSE 根据 binding 定位 Conversation。
-- 不再通过 request ID 查询“最近父 Run”。
-
-### 第四阶段：生命周期单写入者
-
-- 所有 cancel 转为 ConversationCommand。
-- SSE Drop 转为 DetachTransport。
-- terminal 只能从 Conversation runtime 发出。
-- 删除 `cancelled_conversations` 和重复 lifecycle 调用。
-
-### 第五阶段：合并 Actor 与 Session
-
-- 使用一个 `tokio::select!` 处理 wire、Run、Tool、Checkpoint。
-- prepare 作为异步任务返回事件。
-- 删除 `run_resources.take()` 和 `CursorCommand::Finished`。
-- Run 结束后 Conversation 回到 Idle，可继续下一 Run。
-
-### 第六阶段：目录和 Tools 收敛
-
-- 生命周期稳定后再机械移动目录。
-- 同一提交删除旧路径，不保留兼容层。
-- 对 Tools 先锁定 wire 行为，再合并 codec、dispatch、completion、presentation。
-
-## 多人协作规则
-
-- `conversation/runtime.rs` 同一时间只由一个负责人修改。
-- `mod.rs` 只组合和导出，不放业务。
-- 跨目录只能使用公开 façade，禁止引用内部子模块。
-- `tools` 不引用 `ConversationRuntime`。
-- `apis` 不访问 Conversation 内部状态。
-- `observability` 只能订阅事件。
-- Provider 不认识 Cursor Proto。
-- 一个 PR 不同时重写 identity、lifecycle 和 tool wire。
-- 目录迁移设置短合并窗口，避免多人同时修改路径。
-- 每阶段必须保持可编译、可测试、可回滚。
-
-最终依赖方向：
+## Message 投递
 
 ```text
-Gateway
-  ↓
-Conversation Runtime
-  ├── History
-  ├── ToolPort
-  └── Generic Run
-        ↓
-      Provider
+                         Ignore        InsertMessages       BreakMessages
 
-APIs → Gateway 公开接口
-Observability ← 领域事件
+Run 开始前              丢弃          initial_messages     initial_messages
+
+Run 运行中              丢弃          等当前 cycle 完成    取消当前 cycle
+                                      后追加               后追加
+
+Run Finalizing          丢弃          pending_messages     pending_messages
+
+Run 结束后              丢弃          启动下一个 Run       启动下一个 Run
 ```
 
-## 新对话建议的第一条任务
+带 `target_run_id` 时：
 
 ```text
-阅读 cursor.md、AGENTS.md 和 cursor-prefix-stability skill。不要立即移动目录。
-先为 Cursor 身份建立 characterization tests，覆盖 request_id 重复、conversation_id 冲突、wire run_id 的 expected_run_id 校验，以及 ParentConversationRef 三元组。测试完成后给出最小身份收敛改动，不要同时重写生命周期和 Tools。
+target_run_id == current_run_id
+└── 按 delivery 消费
+
+target_run_id != current_run_id
+└── StaleTarget，忽略
+```
+
+## RunEngine
+
+```text
+RunEngine
+│
+├── Running
+│   ├── 接受 InsertMessages
+│   ├── 接受 BreakMessages
+│   ├── 接受 ToolResult
+│   └── 接受 Cancel
+│
+├── Finalizing
+│   ├── 拒绝新消息
+│   ├── 提交最终 Message
+│   ├── 等待 Checkpoint barrier
+│   └── 返回 RunClosing
+│
+└── Ended
+    └── 返回 RunEnded
+```
+
+```text
+RunCommand
+├── InsertMessages(MessageBatch)
+├── BreakMessages(MessageBatch)
+├── ToolResult(ToolResult)
+└── Cancel
+
+CommandResult
+├── Applied
+├── Duplicate
+├── RunClosing
+├── RunEnded
+└── StaleTarget
+```
+
+## InsertMessages
+
+```text
+同一个 Run
+│
+├── LLM Call #1 正在执行
+│       │
+│       └── 收到 InsertMessages
+│               └── pending_insertions
+│
+├── LLM Call #1 完成
+├── 提交 Assistant Message
+├── 追加 InsertMessages
+├── 持久化 Checkpoint
+└── LLM Call #2
+```
+
+不会创建新 Run。
+
+## BreakMessages
+
+```text
+同一个 Run
+│
+├── LLM Call / Tool Round 正在执行
+│       │
+│       └── 收到 BreakMessages
+│
+├── 取消当前 cycle
+├── 中止未完成 Tool
+├── 写入 interrupted ToolResult
+├── 追加 BreakMessages
+├── 持久化 Checkpoint
+└── 重新进入 Model Cycle
+```
+
+取消的是当前 cycle，不是整个 Run。
+
+## Tool 链路
+
+```text
+RunEngine
+    │ ToolCall
+    ▼
+ConversationRuntime
+    │
+    ▼
+ToolDispatcher
+    │
+    ├── Local Tool
+    ├── Exec Tool
+    ├── Edit Tool
+    ├── Interaction Tool
+    ├── Search Tool
+    ├── MCP Tool
+    └── Subagent Tool
+    │
+    ▼
+ToolRuntime
+    │
+    ├── stream
+    ├── cancel
+    ├── result gate
+    └── completion
+    │
+    ▼
+ToolResult
+    │
+    ▼
+RunEngine
+```
+
+Tool 的 Cursor Wire Protocol：
+
+```text
+ToolCall
+├── tools/codec/query.rs
+│       └── InteractionQuery
+├── tools/codec/render.rs
+│       └── Cursor Tool 卡片
+├── tools/codec/request.rs
+│       └── Exec 请求
+└── tools/codec/response.rs
+        └── Exec 响应
+```
+
+## Checkpoint 链路
+
+持久化：
+
+```text
+Conversation Messages
+        │
+        ▼
+checkpoint/messages/encode.rs
+        │
+        ▼
+Stable root messages
+        │
+        ├── Turns
+        ├── Steps
+        ├── Tool state
+        ├── Todo/Plan
+        └── Read paths
+        │
+        ▼
+Checkpoint
+        │
+        ▼
+Cursor ConversationState
+```
+
+恢复：
+
+```text
+Cursor ConversationState
+        │
+        ▼
+checkpoint/recovery.rs
+        │
+        ▼
+checkpoint/messages/decode.rs
+        │
+        ▼
+Conversation Messages
+        │
+        ▼
+PreparedRun
+```
+
+稳定性：
+
+```text
+没有压缩
+└── 之前的 Message 不修改、不删除、不重排
+    └── 新 Message 只追加
+
+发生压缩
+└── 显式替换 Checkpoint roots
+    └── 保留最新稳定上下文
+```
+
+## Cancel 链路
+
+```text
+Bidi Cancel / RunSSE Disconnect / Shutdown
+                    │
+                    ▼
+         ConversationRuntime
+                    │
+          ┌─────────┴─────────┐
+          │                   │
+          ▼                   ▼
+     RunHandle.cancel     ToolRuntime.abort
+          │                   │
+          └─────────┬─────────┘
+                    ▼
+                RunOutcome
+                    │
+                    ▼
+             Final Checkpoint
+                    │
+                    ▼
+          TransportHandle.terminal
+                    │
+                    ▼
+             OutputHub.close
+```
+
+只有 `ConversationRuntime` 可以：
+
+```text
+Cancel current_run
+结束 Tool
+发送 terminal
+关闭 OutputHub
+删除 request_id 路由
+```
+
+## 模块依赖
+
+```text
+api
+└── cursor
+
+cursor/transport
+└── cursor/conversation
+
+cursor/conversation
+├── cursor/compile
+├── cursor/checkpoint
+├── cursor/tools
+├── cursor/protocol
+└── run
+
+run
+├── model
+├── provider
+└── store
+
+cursor/checkpoint
+├── model
+├── store
+└── cursor/protocol
+
+cursor/tools
+├── model
+├── store
+└── cursor/protocol
+
+provider
+└── model
+
+store
+└── model
+```
+
+禁止反向依赖：
+
+```text
+run       ─X→ cursor
+provider  ─X→ cursor
+store     ─X→ cursor
+model     ─X→ cursor
+```
+
+## 当前代码迁移
+
+```text
+当前                                      目标
+
+cursor/bidi_append.rs                  → api/cursor/bidi.rs
+cursor/run_sse.rs                      → api/cursor/run_sse.rs
+cursor/handlers.rs                     → api/cursor/handlers.rs
+cursor/proxy.rs                        → api/cursor/proxy.rs
+
+cursor/sessions.rs                     → cursor/transport/registry.rs
+                                       + cursor/transport/handle.rs
+                                       + cursor/transport/output.rs
+
+cursor/inbox.rs                        → cursor/transport/inbox.rs
+
+cursor/actor.rs                        → cursor/transport/
+                                       + cursor/conversation/runtime.rs
+                                       + cursor/conversation/delivery.rs
+
+cursor/session.rs                      → cursor/conversation/runtime.rs
+                                       + cursor/conversation/output.rs
+                                       + cursor/checkpoint/
+                                       + cursor/tools/
+
+cursor/request/prepare.rs              → cursor/compile/run.rs
+cursor/request/context.rs              → cursor/compile/context.rs
+cursor/request/background.rs           → cursor/compile/insert_messages.rs
+cursor/request/runtime.rs              → cursor/compile/break_messages.rs
+cursor/request/images.rs               → cursor/compile/images.rs
+cursor/request/model.rs                → cursor/compile/model.rs
+
+cursor/interaction/mod.rs              → cursor/protocol/events.rs
+cursor/interaction/query.rs            → cursor/tools/codec/query.rs
+cursor/interaction/render.rs           → cursor/tools/codec/render.rs
+
+cursor/projection/decode.rs            → cursor/checkpoint/messages/decode.rs
+cursor/projection/encode.rs            → cursor/checkpoint/messages/encode.rs
+cursor/projection/tests.rs             → cursor/checkpoint/messages/tests.rs
+
+cursor/presentation.rs                 → cursor/checkpoint/steps.rs
+
+run/runtime.rs RunRegistry             → cursor/conversation/registry.rs
+run/runtime.rs RunActor                → run/engine.rs + run/handle.rs
+run/port.rs                            → run/command.rs + run/event.rs + run/port.rs
+
+store/revisions.rs                     → store/checkpoints.rs
+```
+
+
+## 最终核心
+
+```text
+Bidi
+  → Transport(request_id)
+  → Compile
+  → Conversation(conversation_id)
+  → RunEngine
+  → Provider / Tools
+  → Conversation
+  → Checkpoint
+  → Transport
+  → RunSSE
 ```
