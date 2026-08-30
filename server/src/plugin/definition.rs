@@ -13,7 +13,6 @@ use crate::{config, Error, Result};
 const DEFINITION_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_OUTPUT_BYTES: u64 = 2 * 1024 * 1024;
 const OUTPUT_PREFIX: &str = "CURSOR_BYOK_PLUGIN_DEFINITION:";
-const IMPORT_MAP: &str = r#"{"imports":{"cursor-byok:plugin":"./plugin.ts","cursor-byok:provider":"./provider.ts","cursor-byok:model":"./model.ts","cursor-byok:resource":"./resource.ts","cursor-byok:protocol/openai-responses":"./protocol/openai_responses.ts"}}"#;
 
 #[derive(Clone)]
 pub struct PluginDefinitionLoader {
@@ -43,7 +42,7 @@ impl PluginDefinitionLoader {
         let deno_dir = sdk_dir.join("cache");
         std::fs::create_dir_all(&deno_dir)?;
         let modules = [
-            (&import_map, IMPORT_MAP),
+            (&import_map, include_str!("sdk/import-map.json")),
             (&collector, include_str!("sdk/collect.ts")),
             (&worker, include_str!("sdk/worker.ts")),
             (&sdk_dir.join("plugin.ts"), include_str!("sdk/plugin.ts")),
@@ -59,6 +58,10 @@ impl PluginDefinitionLoader {
             (
                 &sdk_dir.join("protocol/openai_responses.ts"),
                 include_str!("sdk/protocol/openai_responses.ts"),
+            ),
+            (
+                &sdk_dir.join("protocol/openai_chat.ts"),
+                include_str!("sdk/protocol/openai_chat.ts"),
             ),
         ];
         for (path, content) in &modules {
