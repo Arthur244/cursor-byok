@@ -1,11 +1,109 @@
 @use "../../styles/typography" as type;
 
-.page {
+.pluginGrid {
   display: grid;
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+  padding-top: 10px;
 }
 
-.gate {
+.pluginCard {
+  min-width: 0;
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px;
+}
+
+.pluginCardTop {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pluginIcon {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  background: var(--vscode-list-hoverBackground);
+  border: 1px solid var(--vscode-sideBar-border);
+  border-radius: 10px;
+}
+
+.pluginIdentity {
+  min-width: 0;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pluginName,
+.pluginId {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pluginName {
+  color: var(--vscode-foreground);
+  font-size: type.$font-size-base;
+  font-weight: 600;
+}
+
+.pluginId {
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+}
+
+.stateBadge {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  padding: 3px 8px;
+  color: var(--vscode-descriptionForeground);
+  border: 1px solid var(--vscode-sideBar-border);
+  border-radius: 999px;
+  font-size: type.$font-size-2xs;
+  white-space: nowrap;
+}
+
+.stateReady {
+  color: var(--vscode-testing-iconPassed, #73c991);
+  background: color-mix(in srgb, var(--vscode-testing-iconPassed, #73c991) 10%, transparent);
+  border-color: color-mix(in srgb, var(--vscode-testing-iconPassed, #73c991) 28%, transparent);
+}
+
+.pluginMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+}
+
+.pluginAuthor {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
+.cardActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.gate,
+.empty {
   min-height: 250px;
   display: flex;
   flex-direction: column;
@@ -26,37 +124,10 @@
     max-width: 500px;
     font-size: type.$font-size-xs;
   }
-
-  button {
-    margin-top: 6px;
-  }
 }
 
-.runtimeDetails {
-  display: grid;
-  padding: 8px 16px;
-
-  > div {
-    min-height: 38px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    border-bottom: 1px solid var(--vscode-sideBar-border);
-
-    &:last-child {
-      border-bottom: 0;
-    }
-  }
-
-  span {
-    color: var(--vscode-descriptionForeground);
-    font-size: type.$font-size-xs;
-  }
-
-  .ready {
-    color: var(--vscode-testing-iconPassed, #73c991);
-  }
+.gate button {
+  margin-top: 6px;
 }
 
 .progressContent {

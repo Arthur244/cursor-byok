@@ -60,9 +60,6 @@ where
             String::from_utf8_lossy(&bytes)
         ));
         if attempt == policy.retries {
-            if let Some(recorder) = recorder {
-                recorder.failed(&error).await?;
-            }
             return Err(error);
         }
         tracing::warn!(

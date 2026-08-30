@@ -13,6 +13,7 @@ use crate::{
         transport::TransportRegistry,
     },
     local_app::CursorHarness,
+    plugin::{PluginRegistry, PluginRuntime},
     provider::ProviderRouter,
     search::WebCache,
     store::Store,
@@ -37,17 +38,22 @@ impl App {
         }
         let assets = PromptAssets::embedded()?;
         let compiler = PromptCompiler::new(assets);
+        let plugin_runtime = PluginRuntime::managed()?;
+        let plugins = PluginRegistry::managed(store.clone(), plugin_runtime.clone())?;
         let provider = std::sync::Arc::new(ProviderRouter::new(
             store.clone(),
+            plugins.clone(),
             config.provider_request_timeout,
         ));
-        let registry = TransportRegistry::with_web_cache(
+        let registry = TransportRegistry::with_plugins(
             store.clone(),
             provider.clone(),
             compiler,
             WebCache::managed()?,
+            plugins.clone(),
         );
-        let control = control::ControlService::new(store.clone(), provider)?;
+        let control =
+            control::ControlService::new(store.clone(), provider, plugin_runtime, plugins)?;
         let harness = control.cursor_harness().clone();
         let mut router = api::router(registry.clone())?;
         router = match &config.console {

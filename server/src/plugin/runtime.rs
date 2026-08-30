@@ -142,6 +142,14 @@ impl PluginRuntime {
         status.clone()
     }
 
+    pub fn executable(&self) -> Option<PathBuf> {
+        let asset = self.inner.asset?;
+        if self.status().state != PluginRuntimeState::Ready {
+            return None;
+        }
+        Some(installation::runtime_executable(&self.inner.root, asset))
+    }
+
     pub fn initialize(&self, store: Store) -> PluginRuntimeStatus {
         let Some(asset) = self.inner.asset else {
             return self.status();

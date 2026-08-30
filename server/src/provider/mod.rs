@@ -60,6 +60,19 @@ fn merge_extra_params(body: &mut serde_json::Value, extra: &serde_json::Value) -
     Ok(())
 }
 
+fn apply_body_allowlist(
+    body: &mut serde_json::Value,
+    allowed: Option<&std::collections::HashSet<String>>,
+) -> Result<()> {
+    let Some(allowed) = allowed else {
+        return Ok(());
+    };
+    body.as_object_mut()
+        .ok_or_else(|| crate::Error::Provider("provider request body must be an object".into()))?
+        .retain(|name, _| allowed.contains(name));
+    Ok(())
+}
+
 fn apply_openai_prompt_cache_key(body: &mut serde_json::Value, model_id: &str) -> Result<()> {
     if !model_id.to_ascii_lowercase().contains("gpt") {
         return Ok(());

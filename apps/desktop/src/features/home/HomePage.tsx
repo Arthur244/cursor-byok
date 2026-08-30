@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type Overview } from "../../shared/api";
+import { api, configuredPluginModels, type Overview } from "../../shared/api";
 import { ContributionCalendarChart } from "./charts/ContributionCalendarChart";
 import { DailyTokenUsageChart } from "./charts/DailyTokenUsageChart";
 import { HomeMetrics } from "./metrics/HomeMetrics";
@@ -9,7 +9,7 @@ import { OverviewTimeRangeFilter, type OverviewRangePreset } from "./overview/Ov
 import { PageActions } from "../../shell/PageActions";
 import { appStore, useAppStore } from "../../shared/store/appStore";
 import { formatTimeInput, parseTimeInput } from "../../shared/utils/parseTimeInput";
-import { claudeIcon, openAiIcon } from "../../shared/ui/icons";
+import { claudeIcon, flatColorOrganizationIcon, openAiIcon } from "../../shared/ui/icons";
 
 type TimeRange = { startMs: number; endMs: number };
 
@@ -30,7 +30,7 @@ function presetRange(preset: Exclude<OverviewRangePreset, "custom">, now = new D
 }
 
 export function HomePage() {
-  const { overview, busy, models } = useAppStore();
+  const { overview, busy, models, plugins } = useAppStore();
   const [preset, setPreset] = useState<OverviewRangePreset>("month");
   const [customRange, setCustomRange] = useState<TimeRange | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
@@ -101,11 +101,18 @@ export function HomePage() {
     setRefreshVersion((version) => version + 1);
   };
   const iconFor = (type: string) => type === "anthropic" ? claudeIcon : openAiIcon;
-  const modelOptions = models.map((model) => ({
-    value: model.model_hash,
-    label: model.display_name,
-    icon: iconFor(model.type),
-  }));
+  const modelOptions = [
+    ...models.map((model) => ({
+      value: model.model_hash,
+      label: model.display_name,
+      icon: iconFor(model.type),
+    })),
+    ...configuredPluginModels(plugins).map((model) => ({
+      value: model.id,
+      label: model.displayName,
+      icon: flatColorOrganizationIcon,
+    })),
+  ];
   const sections: VirtualPageSection[] = [
     {
       key: "daily-token-usage",

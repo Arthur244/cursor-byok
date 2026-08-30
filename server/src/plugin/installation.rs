@@ -50,6 +50,10 @@ pub(super) fn runtime_complete(root: &Path, asset: RuntimeAsset) -> bool {
     paths.executable.is_file() && paths.ready_marker.is_file()
 }
 
+pub(super) fn runtime_executable(root: &Path, asset: RuntimeAsset) -> PathBuf {
+    RuntimePaths::new(root, asset).executable
+}
+
 async fn download_and_install(
     store: &Store,
     asset: RuntimeAsset,

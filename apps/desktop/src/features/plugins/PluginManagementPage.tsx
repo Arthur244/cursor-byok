@@ -1,17 +1,23 @@
 import { useEffect, useRef, useState } from "react";
-import type { PluginRuntimePhase, PluginRuntimeStatus } from "../../shared/api";
+import { api, pluginText, type PluginDescriptor, type PluginImportFile, type PluginRuntimePhase, type PluginRuntimeStatus } from "../../shared/api";
+import { useI18n } from "../../i18n/store";
 import { PageContent } from "../../shell/layout/PageContent";
 import { appStore, useAppStore } from "../../shared/store/appStore";
 import { Button } from "../../shared/ui/Button";
+import { Card } from "../../shared/ui/Card";
+import { Icon } from "../../shared/ui/Icon";
 import { Modal } from "../../shared/ui/Modal";
-import { TitledCard } from "../../shared/ui/TitledCard";
+import { useMessage } from "../../shared/ui/message";
+import { PluginAddPanel, PluginSettingsPanel } from "./PluginResourcePanels";
 import styles from "./PluginManagementPage.module.scss";
 
 export function PluginManagementPage() {
-  const { pluginRuntime } = useAppStore();
+  const { pluginRuntime, plugins } = useAppStore();
   const [progressOpen, setProgressOpen] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [selected, setSelected] = useState<{ pluginId: string; mode: "add" | "settings" } | null>(null);
   const cancelRequested = useRef(false);
+  const selectedPlugin = selected ? plugins.find((plugin) => plugin.id === selected.pluginId) ?? null : null;
 
   useEffect(() => {
     if (!pluginRuntime) void appStore.refreshPluginRuntime();
@@ -47,13 +53,16 @@ export function PluginManagementPage() {
   };
 
   const content = pluginRuntime?.state === "ready"
-    ? <RuntimeReady status={pluginRuntime} />
+    ? <PluginCards plugins={plugins} onOpen={(pluginId, mode) => setSelected({ pluginId, mode })} />
     : <RuntimeGate status={pluginRuntime} starting={starting} onInitialize={() => void initialize()} />;
+  const estimatedHeight = plugins.length > 0
+    ? Math.max(320, Math.ceil(plugins.length / 3) * 180)
+    : 320;
 
   return <>
     <PageContent
-      title={t("插件管理")}
-      sections={[{ key: "plugin-runtime", estimatedHeight: 320, content }]}
+      title={t("插件配置")}
+      sections={[{ key: "installed-plugins", estimatedHeight, content }]}
     />
     <RuntimeProgressModal
       open={progressOpen}
@@ -61,6 +70,17 @@ export function PluginManagementPage() {
       starting={starting}
       onClose={closeProgress}
     />
+    <Modal
+      fullHeight
+      open={selectedPlugin !== null}
+      title={selected?.mode === "settings"
+        ? t("{name} 账号管理", { name: selectedPlugin?.name ?? "" })
+        : t("添加 {name} 账号", { name: selectedPlugin?.name ?? "" })}
+      onClose={() => setSelected(null)}
+    >
+      {selected?.mode === "add" && selectedPlugin && <PluginAddPanel plugin={selectedPlugin} onConfigured={() => setSelected(null)} />}
+      {selected?.mode === "settings" && selectedPlugin && <PluginSettingsPanel plugin={selectedPlugin} />}
+    </Modal>
   </>;
 }
 
@@ -91,16 +111,99 @@ function RuntimeGate({ status, starting, onInitialize }: { status: PluginRuntime
   </div>;
 }
 
-function RuntimeReady({ status }: { status: PluginRuntimeStatus }) {
-  return <div className={styles.page}>
-    <TitledCard title={t("插件运行时")}>
-      <div className={styles.runtimeDetails}>
-        <div><strong>{t("状态")}</strong><span className={styles.ready}>{t("已就绪")}</span></div>
-        <div><strong>{t("插件运行时版本")}</strong><span>{status.version}</span></div>
-        <div><strong>{t("运行平台")}</strong><span>{status.target}</span></div>
-      </div>
-    </TitledCard>
+function PluginCards({ plugins, onOpen }: {
+  plugins: PluginDescriptor[];
+  onOpen: (pluginId: string, mode: "add" | "settings") => void;
+}) {
+  if (plugins.length === 0) {
+    return <div className={styles.empty}>
+      <strong>{t("还没有安装插件")}</strong>
+      <span>{t("安装插件后会显示在这里。")}</span>
+    </div>;
+  }
+  return <div className={styles.pluginGrid}>
+    {plugins.map((plugin) => <PluginCard key={plugin.id} plugin={plugin} onOpen={onOpen} />)}
   </div>;
+}
+
+function PluginCard({ plugin, onOpen }: {
+  plugin: PluginDescriptor;
+  onOpen: (pluginId: string, mode: "add" | "settings") => void;
+}) {
+  const { locale } = useI18n();
+  const { ports } = useAppStore();
+  const message = useMessage();
+  const importInput = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const configured = plugin.providers.some((provider) => provider.configured);
+  const accountCount = plugin.resources.reduce((count, resource) => count + resource.resources.length, 0);
+  const modelCount = plugin.providers.reduce((count, provider) => count + provider.models.length, 0);
+  const subtitle = plugin.providers.map((provider) => pluginText(provider.displayName, locale)).join(" · ") || plugin.id;
+  const importResource = plugin.resources.find((resource) => resource.import);
+  const exportResource = plugin.resources.find((resource) => resource.resources.length > 0);
+
+  const importFiles = async (files: FileList | null) => {
+    if (!files?.length || !importResource) return;
+    setImporting(true);
+    try {
+      const entries: PluginImportFile[] = await Promise.all(
+        [...files].map(async (file) => ({ name: file.name, content: await file.text() })),
+      );
+      const result = await api.importPluginResources(plugin.id, importResource.type, entries);
+      await appStore.refreshPlugins();
+      const summary = t("导入完成：新增 {added}，更新 {updated}", { added: result.added, updated: result.updated });
+      if (result.modelSyncError) {
+        message(t("账号已保存，但同步模型失败：{error}", { error: result.modelSyncError }), { duration: 5000 });
+      } else if (result.warnings.length > 0) {
+        message(`${summary} · ${result.warnings.join("; ")}`, { duration: 5000 });
+      } else {
+        message(summary);
+      }
+    } catch (cause) {
+      message(cause instanceof Error ? cause.message : String(cause), { duration: 5000 });
+    } finally {
+      setImporting(false);
+      if (importInput.current) importInput.current.value = "";
+    }
+  };
+
+  return <Card className={styles.pluginCard}>
+    <div className={styles.pluginCardTop}>
+      <span className={styles.pluginIcon}><Icon src={plugin.icon} size="1.75em" /></span>
+      <div className={styles.pluginIdentity}>
+        <span className={styles.pluginName}>{plugin.name}</span>
+        <span className={styles.pluginId}>{subtitle}</span>
+      </div>
+      <span className={`${styles.stateBadge} ${configured ? styles.stateReady : ""}`}>
+        {configured ? t("已配置") : t("未配置")}
+      </span>
+    </div>
+    <div className={styles.pluginMeta}>
+      <span>{t("{accounts} 个账号 · {models} 个模型", { accounts: accountCount, models: modelCount })}</span>
+      {plugin.author && <span className={styles.pluginAuthor}>{plugin.author}</span>}
+    </div>
+    <div className={styles.cardActions}>
+      <Button size="small" variant="primary" onClick={() => onOpen(plugin.id, "add")}>{t("添加账号")}</Button>
+      {configured && <Button size="small" onClick={() => onOpen(plugin.id, "settings")}>{t("账号管理")}</Button>}
+      {importResource && <Button size="small" disabled={importing} onClick={() => importInput.current?.click()}>
+        {importing ? t("正在导入…") : t("批量导入")}
+      </Button>}
+      {exportResource && <Button
+        size="small"
+        onClick={() => void api.openExternalUrl(api.pluginResourceExportUrl(ports.service_port, plugin.id, exportResource.type))}
+      >
+        {t("批量导出")}
+      </Button>}
+      {importResource && <input
+        ref={importInput}
+        type="file"
+        hidden
+        accept={importResource.import?.accept.join(",")}
+        multiple={importResource.import?.multiple ?? false}
+        onChange={(event) => void importFiles(event.target.files)}
+      />}
+    </div>
+  </Card>;
 }
 
 function RuntimeProgressModal({ open, status, starting, onClose }: { open: boolean; status: PluginRuntimeStatus | null; starting: boolean; onClose: () => void }) {

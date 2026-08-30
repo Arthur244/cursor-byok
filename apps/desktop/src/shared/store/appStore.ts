@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { api, type CursorHarnessStatus, type LlmCall, type Model, type ModelInput, type Overview, type PluginRuntimeStatus, type PortSettings } from "../api";
+import { api, type CursorHarnessStatus, type LlmCall, type Model, type ModelInput, type Overview, type PluginDescriptor, type PluginRuntimeStatus, type PortSettings } from "../api";
 import { applyTheme, isThemeId, type ThemeId } from "../theme/theme";
 
 export type AppSnapshot = {
@@ -14,6 +14,7 @@ export type AppSnapshot = {
   cursorHarness: CursorHarnessStatus | null;
   cursorBusy: boolean;
   pluginRuntime: PluginRuntimeStatus | null;
+  plugins: PluginDescriptor[];
 };
 
 const savedTheme = (): ThemeId => {
@@ -47,6 +48,7 @@ let snapshot: AppSnapshot = {
   cursorHarness: null,
   cursorBusy: false,
   pluginRuntime: null,
+  plugins: [],
 };
 
 const listeners = new Set<() => void>();
@@ -75,7 +77,7 @@ export const appStore = {
   async refresh() {
     update({ busy: true, error: null });
     try {
-      const [models, calls, overview, settings, ports, cursorHarness, pluginRuntime] = await Promise.all([
+      const [models, calls, overview, settings, ports, cursorHarness, pluginRuntime, plugins] = await Promise.all([
         api.models(),
         api.calls(),
         api.overview(),
@@ -83,8 +85,9 @@ export const appStore = {
         api.ports(),
         api.cursorHarness(),
         api.pluginRuntime(),
+        api.plugins(),
       ]);
-      update({ models, calls, overview, detailed: settings.detailed, ports, cursorHarness, pluginRuntime });
+      update({ models, calls, overview, detailed: settings.detailed, ports, cursorHarness, pluginRuntime, plugins });
     } catch (cause) {
       update({ error: cause instanceof Error ? cause.message : String(cause) });
     } finally {
@@ -123,8 +126,13 @@ export const appStore = {
   },
   async refreshPluginRuntime() {
     try {
+      const wasReady = snapshot.pluginRuntime?.state === "ready";
       const pluginRuntime = await api.pluginRuntime();
       update({ pluginRuntime });
+      if (!wasReady && pluginRuntime.state === "ready") {
+        const plugins = await api.plugins();
+        update({ plugins });
+      }
       return pluginRuntime;
     } catch (cause) {
       update({ error: cause instanceof Error ? cause.message : String(cause) });
@@ -140,6 +148,19 @@ export const appStore = {
       update({ error: cause instanceof Error ? cause.message : String(cause) });
       return null;
     }
+  },
+  async refreshPlugins() {
+    try {
+      update({ plugins: await api.plugins() });
+    } catch (cause) {
+      update({ error: cause instanceof Error ? cause.message : String(cause) });
+    }
+  },
+  async removePluginConfiguration(pluginId: string) {
+    await perform(async () => {
+      await api.removePluginConfiguration(pluginId);
+      update({ plugins: await api.plugins() });
+    });
   },
   async setCursorEnabled(enabled: boolean) {
     update({ cursorBusy: true, error: null });
