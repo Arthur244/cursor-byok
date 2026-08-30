@@ -70,11 +70,7 @@ impl PluginDataStore {
             .await?;
         file.sync_all().await?;
         drop(file);
-        #[cfg(windows)]
-        if path.exists() {
-            tokio::fs::remove_file(&path).await?;
-        }
-        tokio::fs::rename(&temporary, &path).await?;
+        replace_file(&temporary, &path).await?;
         set_file_permissions(&path)?;
         Ok(())
     }
@@ -103,6 +99,41 @@ impl PluginDataStore {
             .entry(plugin_id.to_owned())
             .or_insert_with(|| Arc::new(AsyncMutex::new(())))
             .clone()
+    }
+}
+
+/// 原子替换目标文件。Windows 上 rename 不覆盖已存在文件,且目标可能被
+/// 杀毒软件或索引器短暂锁定(拒绝访问/共享冲突),需删除后重试。
+async fn replace_file(temporary: &Path, path: &Path) -> Result<()> {
+    #[cfg(windows)]
+    {
+        const ACCESS_DENIED: i32 = 5;
+        const SHARING_VIOLATION: i32 = 32;
+        let mut attempts = 0;
+        loop {
+            if path.exists() {
+                let _ = tokio::fs::remove_file(path).await;
+            }
+            match tokio::fs::rename(temporary, path).await {
+                Ok(()) => return Ok(()),
+                Err(error)
+                    if attempts < 10
+                        && matches!(
+                            error.raw_os_error(),
+                            Some(ACCESS_DENIED | SHARING_VIOLATION)
+                        ) =>
+                {
+                    attempts += 1;
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        tokio::fs::rename(temporary, path).await?;
+        Ok(())
     }
 }
 

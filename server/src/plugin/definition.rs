@@ -107,6 +107,7 @@ impl PluginDefinitionLoader {
     ) -> Result<PluginModuleDefinition> {
         let entry_url = file_url(entry)?;
         let mut command = tokio::process::Command::new(executable);
+        super::detach_console(&mut command);
         command
             .arg("run")
             .arg("--quiet")

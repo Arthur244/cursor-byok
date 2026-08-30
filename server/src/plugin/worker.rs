@@ -223,6 +223,7 @@ impl PluginWorker {
     async fn spawn(&self) -> Result<WorkerProcess> {
         let entry_url = file_url(&self.inner.entry)?;
         let mut command = tokio::process::Command::new(&self.inner.executable);
+        super::detach_console(&mut command);
         command
             .arg("run")
             .arg("--quiet")

@@ -207,6 +207,7 @@ fn extract_runtime_archive(archive: &Path, output: &Path, executable_name: &str)
 
 async fn validate_runtime(executable: &Path, cancellation: &CancellationToken) -> Result<()> {
     let mut command = tokio::process::Command::new(executable);
+    super::detach_console(&mut command);
     command
         .arg("--version")
         .stdin(Stdio::null())
