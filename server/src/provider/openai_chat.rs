@@ -17,7 +17,11 @@ use crate::{
 };
 
 use super::{
+<<<<<<< HEAD
     apply_body_allowlist, apply_openai_prompt_cache_key, merge_extra_params,
+=======
+    apply_openai_prompt_cache_key, map_sse_error, merge_extra_params, provider_event_error,
+>>>>>>> main
     recorder::recorded_headers,
     retry::{send_with_retry, Attempt, RetryPolicy},
     CallRecorder, FinishReason, ModelEvent, Provider, ProviderStream,
@@ -147,12 +151,14 @@ impl Provider for OpenAiChatProvider {
                     break;
                 };
                 let event = event.map_err(|error| {
-                    let err_msg = error.to_string();
                     tracing::debug!(iteration = loop_iteration, error = %error, "OpenAI Chat SSE event failed");
-                    Error::Provider(format!("OpenAI Chat SSE: {err_msg}"))
+                    map_sse_error("OpenAI Chat", error)
                 })?;
                 if event.data == "[DONE]" { saw_done_marker = true; break; }
                 let value: Value = serde_json::from_str(&event.data)?;
+                if let Some(error) = provider_event_error("OpenAI Chat", &value) {
+                    Err(error)?;
+                }
                 if let Some(usage) = value.get("usage").filter(|value| !value.is_null()) {
                     final_usage = Some(openai_usage(usage));
                 }

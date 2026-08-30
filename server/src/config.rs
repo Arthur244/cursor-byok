@@ -10,7 +10,8 @@ const DATA_DIR_NAME: &str = ".cursor-byok-v3";
 const DATABASE_FILE_NAME: &str = "cursor-byok.db";
 const V0049_DATA_DIR_NAME: &str = ".cursor-local-assistant-v2";
 const V0049_CONFIG_FILE_NAME: &str = "config.yaml";
-const DEFAULT_PROVIDER_REQUEST_TIMEOUT: Duration = Duration::from_secs(3000);
+const DEFAULT_PROVIDER_REQUEST_TIMEOUT: Duration = Duration::from_secs(60 * 60);
+const DEFAULT_PROVIDER_STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
 pub fn managed_data_dir() -> Result<PathBuf> {
     let home_dir = dirs::home_dir()
@@ -54,6 +55,7 @@ pub struct Config {
     pub listen_addr: SocketAddr,
     pub database_url: String,
     pub provider_request_timeout: Duration,
+    pub provider_stream_idle_timeout: Duration,
     pub console: Option<ConsoleSource>,
     pub use_persisted_ports: bool,
 }
@@ -104,6 +106,7 @@ impl Config {
             listen_addr,
             database_url: database_url_from_env()?,
             provider_request_timeout: request_timeout,
+            provider_stream_idle_timeout: DEFAULT_PROVIDER_STREAM_IDLE_TIMEOUT,
             console,
             use_persisted_ports: false,
         })
@@ -116,6 +119,7 @@ impl Config {
                 .expect("desktop listen address is static"),
             database_url: default_database_url()?,
             provider_request_timeout: DEFAULT_PROVIDER_REQUEST_TIMEOUT,
+            provider_stream_idle_timeout: DEFAULT_PROVIDER_STREAM_IDLE_TIMEOUT,
             console: None,
             use_persisted_ports: true,
         })
@@ -143,4 +147,21 @@ fn database_url_for_dir(data_dir: &std::path::Path) -> Result<String> {
         .to_str()
         .ok_or_else(|| Error::Config("database path is not valid UTF-8".into()))?;
     Ok(format!("sqlite://{database_path}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn provider_timeout_defaults_match_runtime_boundaries() {
+        assert_eq!(
+            DEFAULT_PROVIDER_STREAM_IDLE_TIMEOUT,
+            Duration::from_secs(30 * 60)
+        );
+        assert_eq!(
+            DEFAULT_PROVIDER_REQUEST_TIMEOUT,
+            Duration::from_secs(60 * 60)
+        );
+    }
 }

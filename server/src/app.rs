@@ -44,6 +44,7 @@ impl App {
             store.clone(),
             plugins.clone(),
             config.provider_request_timeout,
+            config.provider_stream_idle_timeout,
         ));
         let registry = TransportRegistry::with_plugins(
             store.clone(),
