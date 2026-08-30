@@ -70,19 +70,61 @@
   gap: 20px;
   padding-top: 10px;
 }
-.modelGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.groupCard {
+  padding: 4px 12px 8px;
 }
-.modelGroupHeader {
+.groupToggle {
+  width: 100%;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  padding: 8px 2px;
   color: var(--vscode-foreground);
+  background: none;
+  border: none;
   font-size: type.$font-size-base;
-  opacity: 0.6;
-  padding-left: 6px;
+  cursor: pointer;
+}
+.groupLabel {
+  flex: 1;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.modelList {
+  display: flex;
+  flex-direction: column;
+}
+.modelRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  padding: 10px 2px;
+  border-top: 1px solid var(--vscode-sideBar-border);
+}
+.modelRowName {
+  min-width: 0;
+  flex: 1 1 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  .modelRowNameText,
+  .modelRowModelId {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .modelRowNameText {
+    color: var(--vscode-foreground);
+    font-size: type.$font-size-base;
+  }
+  .modelRowModelId {
+    color: var(--vscode-descriptionForeground);
+    font-size: type.$font-size-2xs;
+  }
 }
 .modelCard {
   position: relative;
@@ -141,9 +183,15 @@
 }
 .modelCardActions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
   gap: 8px;
+
+  // 空间不足时按钮收缩显示省略号,而不是换行。
+  > button {
+    min-width: 0;
+    flex: 0 1 auto;
+  }
 }
 .deleteButton:hover {
   color: var(--vscode-errorForeground, #f48771);

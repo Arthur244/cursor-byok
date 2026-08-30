@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from "react";
+import type { ComponentProps } from "react";
 import controls from "./Controls.module.scss";
 
 export type ButtonVariant = "primary" | "secondary";
@@ -10,7 +10,7 @@ export function Button({
   className,
   type = "button",
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & {
+}: ComponentProps<"button"> & {
   variant?: ButtonVariant;
   size?: ButtonSize;
 }) {

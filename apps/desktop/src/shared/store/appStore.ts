@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { api, type CursorHarnessStatus, type LlmCall, type Model, type ModelInput, type Overview, type PortSettings } from "../api";
+import { api, type CursorHarnessStatus, type LlmCall, type Model, type ModelInput, type Overview, type PluginDescriptor, type PluginRuntimeStatus, type PortSettings } from "../api";
 import { applyTheme, isThemeId, type ThemeId } from "../theme/theme";
 
 export type AppSnapshot = {
@@ -13,6 +13,8 @@ export type AppSnapshot = {
   theme: ThemeId;
   cursorHarness: CursorHarnessStatus | null;
   cursorBusy: boolean;
+  pluginRuntime: PluginRuntimeStatus | null;
+  plugins: PluginDescriptor[];
 };
 
 const savedTheme = (): ThemeId => {
@@ -45,6 +47,8 @@ let snapshot: AppSnapshot = {
   theme: savedTheme(),
   cursorHarness: null,
   cursorBusy: false,
+  pluginRuntime: null,
+  plugins: [],
 };
 
 const listeners = new Set<() => void>();
@@ -73,15 +77,17 @@ export const appStore = {
   async refresh() {
     update({ busy: true, error: null });
     try {
-      const [models, calls, overview, settings, ports, cursorHarness] = await Promise.all([
+      const [models, calls, overview, settings, ports, cursorHarness, pluginRuntime, plugins] = await Promise.all([
         api.models(),
         api.calls(),
         api.overview(),
         api.observability(),
         api.ports(),
         api.cursorHarness(),
+        api.pluginRuntime(),
+        api.plugins(),
       ]);
-      update({ models, calls, overview, detailed: settings.detailed, ports, cursorHarness });
+      update({ models, calls, overview, detailed: settings.detailed, ports, cursorHarness, pluginRuntime, plugins });
     } catch (cause) {
       update({ error: cause instanceof Error ? cause.message : String(cause) });
     } finally {
@@ -106,6 +112,55 @@ export const appStore = {
       update({ error: cause instanceof Error ? cause.message : String(cause) });
       return null;
     } finally { update({ cursorBusy: false }); }
+  },
+  async initializePluginRuntime() {
+    update({ error: null });
+    try {
+      const pluginRuntime = await api.initializePluginRuntime();
+      update({ pluginRuntime });
+      return pluginRuntime;
+    } catch (cause) {
+      update({ error: cause instanceof Error ? cause.message : String(cause) });
+      return null;
+    }
+  },
+  async refreshPluginRuntime() {
+    try {
+      const wasReady = snapshot.pluginRuntime?.state === "ready";
+      const pluginRuntime = await api.pluginRuntime();
+      update({ pluginRuntime });
+      if (!wasReady && pluginRuntime.state === "ready") {
+        const plugins = await api.plugins();
+        update({ plugins });
+      }
+      return pluginRuntime;
+    } catch (cause) {
+      update({ error: cause instanceof Error ? cause.message : String(cause) });
+      return null;
+    }
+  },
+  async cancelPluginRuntimeInitialization() {
+    try {
+      const pluginRuntime = await api.cancelPluginRuntimeInitialization();
+      update({ pluginRuntime });
+      return pluginRuntime;
+    } catch (cause) {
+      update({ error: cause instanceof Error ? cause.message : String(cause) });
+      return null;
+    }
+  },
+  async refreshPlugins() {
+    try {
+      update({ plugins: await api.plugins() });
+    } catch (cause) {
+      update({ error: cause instanceof Error ? cause.message : String(cause) });
+    }
+  },
+  async removePluginConfiguration(pluginId: string) {
+    await perform(async () => {
+      await api.removePluginConfiguration(pluginId);
+      update({ plugins: await api.plugins() });
+    });
   },
   async setCursorEnabled(enabled: boolean) {
     update({ cursorBusy: true, error: null });

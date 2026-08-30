@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type Model, type ModelInput } from "../../shared/api";
+import { useNavigate } from "react-router-dom";
+import { api, configuredPluginModels, type Model, type ModelInput } from "../../shared/api";
 import { CursorCaGate, CursorCaProvider, CursorModelGate, CursorModelProvider } from "./CursorGates";
 import { CursorModelCards, cursorModelGroups, type CursorModelGrouping } from "./CursorModelCards";
 import { CursorModelEditor, emptyCursorModelDraft, type CursorModelDraft } from "./CursorModelEditor";
@@ -18,7 +19,8 @@ import { PageActions } from "../../shell/PageActions";
 import { appStore, useAppStore } from "../../shared/store/appStore";
 
 export function CursorSettingsPage() {
-  const { models, cursorHarness, cursorBusy } = useAppStore();
+  const { models, cursorHarness, cursorBusy, plugins } = useAppStore();
+  const navigate = useNavigate();
   const message = useMessage();
   const [draft, setDraft] = useState<CursorModelDraft | null>(null);
   const [editing, setEditing] = useState<Model | null>(null);
@@ -34,6 +36,11 @@ export function CursorSettingsPage() {
   const [grouping, setGrouping] = useState<CursorModelGrouping>("flat");
   const activeModelTests = useRef(new Map<string, { testId: string; controller: AbortController; cancelling: boolean }>());
   const caReady = cursorHarness?.ca === "ready";
+  const pluginModels = configuredPluginModels(plugins);
+  const testTargets = [
+    ...models.map((model) => ({ model_hash: model.model_hash, display_name: model.display_name })),
+    ...pluginModels.map((model) => ({ model_hash: model.id, display_name: model.displayName })),
+  ];
   const providerGroups = cursorModelGroups(models, "provider");
   const typeGroups = cursorModelGroups(models, "type");
   const canGroupByProvider = providerGroups.length > 1;
@@ -64,6 +71,7 @@ export function CursorSettingsPage() {
     setEditing(model);
     setModelOptions([model.model_id]);
     setDraft({
+      providerId: `builtin/${model.type}`,
       model: modelInput(model),
       openAIExtraParamsText: JSON.stringify(model.openai_extra_params, null, 2),
       customHeadersText: JSON.stringify(model.custom_headers, null, 2),
@@ -120,7 +128,7 @@ export function CursorSettingsPage() {
   const cancelAllModelTests = async () => {
     await Promise.all([...activeModelTests.current.keys()].map((modelHash) => cancelModelTest(modelHash)));
   };
-  const testModel = async (model: Model, notify = true): Promise<"success" | "failure" | "cancelled"> => {
+  const testModel = async (model: { model_hash: string; display_name: string }, notify = true): Promise<"success" | "failure" | "cancelled"> => {
     if (activeModelTests.current.has(model.model_hash)) {
       await cancelModelTest(model.model_hash);
       return "cancelled";
@@ -167,17 +175,17 @@ export function CursorSettingsPage() {
     await appStore.refresh();
   };
   const testAllModels = async () => {
-    if (!models.length || batchTesting) return;
+    if (!testTargets.length || batchTesting) return;
     setBatchTesting(true);
     try {
-      const results = await Promise.all(models.map((model) => testModel(model, false)));
+      const results = await Promise.all(testTargets.map((model) => testModel(model, false)));
       const successful = results.filter((result) => result === "success").length;
       const failed = results.filter((result) => result === "failure").length;
       const cancelled = results.filter((result) => result === "cancelled").length;
       message(cancelled > 0
         ? t("连通性测试已取消：成功 {successful}，失败 {failed}", { successful, failed })
         : failed === 0
-          ? t("全部 {count} 个模型连通性测试成功", { count: models.length })
+          ? t("全部 {count} 个模型连通性测试成功", { count: testTargets.length })
           : t("连通性测试完成：成功 {successful}，失败 {failed}", { successful, failed }),
       { duration: failed === 0 && cancelled === 0 ? 2400 : 5000 });
     } finally {
@@ -208,6 +216,7 @@ export function CursorSettingsPage() {
 
   const list = <CursorModelCards
     models={models}
+    pluginModels={pluginModels}
     grouping={grouping}
     disabled={cursorBusy}
     testingModelHashes={testingModelHashes}
@@ -216,6 +225,8 @@ export function CursorSettingsPage() {
     onEdit={openEdit}
     onDuplicate={(model) => void duplicateModel(model)}
     onDelete={setDeleting}
+    onTestPluginModel={(model) => void testModel({ model_hash: model.id, display_name: model.displayName })}
+    onPluginSettings={() => navigate("/plugins")}
     onReorder={reorderModels}
   />;
 
@@ -239,12 +250,13 @@ export function CursorSettingsPage() {
   const editorTestState = editing ? modelTestResults.get(editing.model_hash) : undefined;
   const editorTesting = Boolean(editing && testingModelHashes.has(editing.model_hash));
   const activeGroups = grouping === "provider" ? providerGroups : typeGroups;
+  const pluginSectionHeight = pluginModels.length > 0 ? 60 + pluginModels.length * 56 : 0;
   const estimatedModelHeight = grouping === "flat"
-    ? Math.max(380, Math.ceil(models.length / 3) * 196)
-    : Math.max(380, activeGroups.reduce((height, group) => height + Math.ceil(group.models.length / 3) * 196 + 34, 0) + Math.max(0, activeGroups.length - 1) * 20);
+    ? Math.max(380, Math.ceil(models.length / 3) * 196 + pluginSectionHeight)
+    : Math.max(380, activeGroups.reduce((height, group) => height + 60 + group.models.length * 56, 0) + Math.max(0, activeGroups.length - 1) * 20 + pluginSectionHeight);
 
   return <>
-    {models.length > 0 && <PageActions position="left">
+    {testTargets.length > 0 && <PageActions position="left">
       <div className={styles.groupActions} role="group" aria-label={t("操作")}>
         <button type="button" aria-pressed={grouping === "flat"} onClick={() => setGrouping("flat")}>{t("默认平铺")}</button>
         {canGroupByProvider && <button type="button" aria-pressed={grouping === "provider"} onClick={() => setGrouping("provider")}>{t("按供应商")}</button>}
@@ -253,8 +265,8 @@ export function CursorSettingsPage() {
       </div>
     </PageActions>}
     <PageActions><TooltipTrigger label={caReady ? t("添加模型") : t("请先初始化 CA")}><button className={controls.iconButton} aria-label={t("添加模型")} disabled={!caReady || cursorBusy} onClick={openNew}><Icon icon={addIcon} size="1.1em" /></button></TooltipTrigger></PageActions>
-    <PageContent title={t("Cursor 配置")} sections={[{ key: "cursor-settings", estimatedHeight: estimatedModelHeight, content }]} />
-    <Modal fullHeight open={draft !== null} title={editing ? t("编辑模型") : t("添加模型")} banner={draft && (editorTesting || editorTestState) ? <CursorModelTestResult state={editorTestState} testing={editorTesting} /> : undefined} busy={cursorBusy || savingAndTesting} onClose={() => { if (editing && editorTesting) void cancelModelTest(editing.model_hash); setDraft(null); setEditing(null); }} onSubmit={() => void save()} secondaryAction={<button type="button" className={controls.secondary} disabled={cursorBusy || savingAndTesting} onClick={() => void (editorTesting && editing ? cancelModelTest(editing.model_hash) : saveAndTest())}>{savingAndTesting ? t("处理中…") : editorTesting ? t("取消测试") : t("保存并测试")}</button>}>
+    <PageContent title="Cursor" sections={[{ key: "cursor-settings", estimatedHeight: estimatedModelHeight, content }]} />
+    <Modal fullHeight open={draft !== null} title={editing ? t("编辑模型") : t("添加模型")} banner={draft && (editorTesting || editorTestState) ? <CursorModelTestResult state={editorTestState} testing={editorTesting} /> : undefined} busy={cursorBusy || savingAndTesting} onClose={() => { if (editing && editorTesting) void cancelModelTest(editing.model_hash); setDraft(null); setEditing(null); }} onSubmit={() => void save()} submitLabel={t("保存")} secondaryAction={<button type="button" className={controls.secondary} disabled={cursorBusy || savingAndTesting} onClick={() => void (editorTesting && editing ? cancelModelTest(editing.model_hash) : saveAndTest())}>{savingAndTesting ? t("处理中…") : editorTesting ? t("取消测试") : t("保存并测试")}</button>}>
       {draft && <>
         <CursorModelEditor draft={draft} modelOptions={modelOptions} discovering={discovering} onChange={setDraft} onDiscover={() => void discover()} />
       </>}

@@ -14,7 +14,8 @@ use crate::{
 };
 
 use super::{
-    apply_openai_prompt_cache_key, map_sse_error, merge_extra_params, provider_event_error,
+    apply_body_allowlist, apply_openai_prompt_cache_key, map_sse_error, merge_extra_params,
+    provider_event_error,
     recorder::recorded_headers,
     retry::{send_with_retry, Attempt, RetryPolicy},
     CallRecorder, FinishReason, ModelEvent, Provider, ProviderStream,
@@ -83,6 +84,7 @@ impl Provider for OpenAiResponsesProvider {
             apply_model(&mut body, &request.model, config.max_output_tokens)?;
             merge_extra_params(&mut body, &request.model.extra_params)?;
             apply_openai_prompt_cache_key(&mut body, &request.model.model_id)?;
+            apply_body_allowlist(&mut body, config.allowed_body_fields.as_ref())?;
             let request_headers = recorded_headers(&config, &[("content-type", "application/json")]);
             if let Some(recorder) = &recorder {
                 recorder.request(request_headers.clone(), &body).await?;
@@ -91,7 +93,7 @@ impl Provider for OpenAiResponsesProvider {
                 "OpenAI Responses",
                 || client.post(&config.request_url)
                     .bearer_auth(&config.api_key).headers(config.custom_headers.clone()).json(&body),
-                RetryPolicy::default(),
+                RetryPolicy { retries: config.retry_count, ..RetryPolicy::default() },
                 &cancellation,
                 recorder.as_ref(),
                 request_headers,

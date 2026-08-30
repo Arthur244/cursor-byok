@@ -96,7 +96,7 @@ impl Provider for AnthropicProvider {
                     .header("x-api-key", &config.api_key).header("anthropic-version", "2023-06-01")
                     .headers(config.custom_headers.clone())
                     .json(&body),
-                RetryPolicy::default(),
+                RetryPolicy { retries: config.retry_count, ..RetryPolicy::default() },
                 &cancellation,
                 recorder.as_ref(),
                 request_headers,

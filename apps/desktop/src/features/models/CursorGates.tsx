@@ -24,8 +24,9 @@ export function CursorCaGate({ busy, waitingForRefresh, onInitialize, onRefresh,
 }
 
 export function CursorModelProvider({ children }: { children: ReactNode }) {
-  const { models } = useAppStore();
-  return <ModelsReady.Provider value={models.length > 0}>{children}</ModelsReady.Provider>;
+  const { models, plugins } = useAppStore();
+  const hasConfiguredPlugin = plugins.some((plugin) => plugin.providers.some((provider) => provider.configured));
+  return <ModelsReady.Provider value={models.length > 0 || hasConfiguredPlugin}>{children}</ModelsReady.Provider>;
 }
 
 export function CursorModelGate({ busy, previewingImport, onAdd, onImport, children }: { busy: boolean; previewingImport: boolean; onAdd: () => void; onImport: () => void; children: ReactNode }) {

@@ -11,6 +11,7 @@ use crate::{
     api::cursor::proxy::{self, CursorProxy},
     cursor::{protocol::proto::agent::v1 as agent, transport::TransportRegistry},
     model::{format_token_count, parse_token_count, ModelConfig, ModelType},
+    plugin::PluginModelDescriptor,
     Error, Result,
 };
 
@@ -186,9 +187,10 @@ struct UsableModelsAddition {
     models: Vec<agent::ModelDetails>,
 }
 
-const CONTEXTS: [(&str, &str); 4] = [
+const CONTEXTS: [(&str, &str); 5] = [
     ("200k", "200K"),
     ("356k", "356K"),
+    ("500k", "500K"),
     ("800k", "800K"),
     ("1m", "1M"),
 ];
@@ -201,12 +203,12 @@ const EFFORTS: [(&str, &str); 5] = [
 ];
 const DEFAULT_CONTEXT: &str = "200k";
 
-fn context_options(model: &ModelConfig) -> Vec<(String, String)> {
+fn context_options(context_window_tokens: Option<u64>) -> Vec<(String, String)> {
     let mut contexts = CONTEXTS
         .into_iter()
         .map(|(value, display_name)| (value.to_owned(), display_name.to_owned()))
         .collect::<Vec<_>>();
-    if let Some(tokens) = model.context_window_tokens {
+    if let Some(tokens) = context_window_tokens {
         let value = tokens.to_string();
         let duplicate = contexts
             .iter()
@@ -224,15 +226,22 @@ pub async fn available_models(
     request: Request<Body>,
 ) -> Result<Response<Body>> {
     let models = registry.store().models().await?;
+    let plugin_models = match registry.plugins() {
+        Some(plugins) => plugins.configured_models().await,
+        None => Vec::new(),
+    };
     tracing::info!(
         model_count = models.len(),
+        plugin_model_count = plugin_models.len(),
         "appending BYOK models to Cursor AvailableModels"
     );
-    let available_models = models.iter().map(available_model).collect::<Vec<_>>();
+    let mut available_models = models.iter().map(available_model).collect::<Vec<_>>();
+    available_models.extend(plugin_models.iter().map(available_plugin_model));
     let local = AvailableModelsAddition {
         model_names: models
             .iter()
             .map(|model| model.model_hash.clone())
+            .chain(plugin_models.iter().map(|model| model.id.clone()))
             .collect(),
         models: available_models,
     }
@@ -252,12 +261,21 @@ pub async fn usable_models(
     request: Request<Body>,
 ) -> Result<Response<Body>> {
     let models = registry.store().models().await?;
+    let plugin_models = match registry.plugins() {
+        Some(plugins) => plugins.configured_models().await,
+        None => Vec::new(),
+    };
     tracing::info!(
         model_count = models.len(),
+        plugin_model_count = plugin_models.len(),
         "appending BYOK models to Cursor GetUsableModels"
     );
     let local = UsableModelsAddition {
-        models: models.iter().map(usable_model).collect(),
+        models: models
+            .iter()
+            .map(usable_model)
+            .chain(plugin_models.iter().map(usable_plugin_model))
+            .collect(),
     }
     .encode_to_vec();
     match proxy::forward_buffered(&proxy, request).await {
@@ -319,13 +337,19 @@ fn unary_payload(body: &Bytes) -> Result<(bool, &[u8])> {
 }
 
 fn available_model(model: &ModelConfig) -> AvailableModel {
-    let contexts = context_options(model);
-    let variants = model_variants(model, &contexts);
+    let contexts = context_options(model.context_window_tokens);
+    let tooltip = model_tooltip(model);
+    let variants = model_variants(
+        &model.model_hash,
+        &model.display_name,
+        &tooltip,
+        &contexts,
+        true,
+    );
     let legacy_slugs = variants
         .iter()
         .filter_map(|variant| variant.legacy_slug.clone())
         .collect();
-    let tooltip = model_tooltip(model);
     AvailableModel {
         name: model.model_hash.clone(),
         default_on: true,
@@ -344,7 +368,7 @@ fn available_model(model: &ModelConfig) -> AvailableModel {
         inputbox_short_model_name: Some(model.display_name.clone()),
         supports_sandboxing: Some(true),
         supports_cmd_k: Some(false),
-        parameter_definitions: model_parameters(&contexts),
+        parameter_definitions: model_parameters(&contexts, true),
         variants,
         legacy_slugs,
         named_model_section_index: Some(1),
@@ -364,27 +388,30 @@ fn available_model(model: &ModelConfig) -> AvailableModel {
     }
 }
 
-fn model_parameters(contexts: &[(String, String)]) -> Vec<ModelParameterDefinition> {
-    vec![
-        ModelParameterDefinition {
-            id: "context".into(),
-            name: "Context".into(),
-            markdown_tooltip: Some("Context size used to trigger conversation compaction.".into()),
-            parameter_type: Some(ModelParameterType {
-                boolean_parameter: None,
-                enum_parameter: Some(EnumParameter {
-                    values: contexts
-                        .iter()
-                        .map(|(value, display_name)| EnumParameterValue {
-                            value: value.clone(),
-                            display_name: Some(display_name.clone()),
-                        })
-                        .collect(),
-                }),
+fn model_parameters(
+    contexts: &[(String, String)],
+    thinking: bool,
+) -> Vec<ModelParameterDefinition> {
+    let mut parameters = vec![ModelParameterDefinition {
+        id: "context".into(),
+        name: "Context".into(),
+        markdown_tooltip: Some("Context size used to trigger conversation compaction.".into()),
+        parameter_type: Some(ModelParameterType {
+            boolean_parameter: None,
+            enum_parameter: Some(EnumParameter {
+                values: contexts
+                    .iter()
+                    .map(|(value, display_name)| EnumParameterValue {
+                        value: value.clone(),
+                        display_name: Some(display_name.clone()),
+                    })
+                    .collect(),
             }),
-            is_cycleable_by_hotkey: Some(false),
-        },
-        ModelParameterDefinition {
+        }),
+        is_cycleable_by_hotkey: Some(false),
+    }];
+    if thinking {
+        parameters.push(ModelParameterDefinition {
             id: "reasoning".into(),
             name: "Effort".into(),
             markdown_tooltip: Some("Effort the model uses to generate its response.".into()),
@@ -401,44 +428,64 @@ fn model_parameters(contexts: &[(String, String)]) -> Vec<ModelParameterDefiniti
                 }),
             }),
             is_cycleable_by_hotkey: Some(true),
-        },
-        ModelParameterDefinition {
-            id: "fast".into(),
-            name: "Fast".into(),
-            markdown_tooltip: Some("Significantly faster but consumes more usage".into()),
-            parameter_type: Some(ModelParameterType {
-                boolean_parameter: Some(BooleanParameter {
-                    values: vec![
-                        BooleanParameterValue {
-                            value: "false".into(),
-                            display_name: None,
-                            increases_model_cost: None,
-                        },
-                        BooleanParameterValue {
-                            value: "true".into(),
-                            display_name: Some("Fast".into()),
-                            increases_model_cost: Some(true),
-                        },
-                    ],
-                }),
-                enum_parameter: None,
+        });
+    }
+    parameters.push(ModelParameterDefinition {
+        id: "fast".into(),
+        name: "Fast".into(),
+        markdown_tooltip: Some("Significantly faster but consumes more usage".into()),
+        parameter_type: Some(ModelParameterType {
+            boolean_parameter: Some(BooleanParameter {
+                values: vec![
+                    BooleanParameterValue {
+                        value: "false".into(),
+                        display_name: None,
+                        increases_model_cost: None,
+                    },
+                    BooleanParameterValue {
+                        value: "true".into(),
+                        display_name: Some("Fast".into()),
+                        increases_model_cost: Some(true),
+                    },
+                ],
             }),
-            is_cycleable_by_hotkey: Some(false),
-        },
-    ]
+            enum_parameter: None,
+        }),
+        is_cycleable_by_hotkey: Some(false),
+    });
+    parameters
 }
 
-fn model_variants(model: &ModelConfig, contexts: &[(String, String)]) -> Vec<ModelVariant> {
-    let mut variants = Vec::with_capacity(contexts.len() * EFFORTS.len() * 2);
+fn model_variants(
+    name: &str,
+    display_name: &str,
+    tooltip: &TooltipData,
+    contexts: &[(String, String)],
+    thinking: bool,
+) -> Vec<ModelVariant> {
+    // 非思考模型没有 Effort 轴,变体网格只剩 Context × Fast。
+    let efforts: &[Option<(&str, &str)>] = if thinking {
+        &[
+            Some(EFFORTS[0]),
+            Some(EFFORTS[1]),
+            Some(EFFORTS[2]),
+            Some(EFFORTS[3]),
+            Some(EFFORTS[4]),
+        ]
+    } else {
+        &[None]
+    };
+    let mut variants = Vec::with_capacity(contexts.len() * efforts.len() * 2);
     for (context, context_name) in contexts {
-        for (effort, effort_name) in EFFORTS {
+        for effort in efforts {
             for fast in [false, true] {
                 variants.push(model_variant(
-                    model,
+                    name,
+                    display_name,
+                    tooltip,
                     context,
                     context_name,
-                    effort,
-                    effort_name,
+                    *effort,
                     fast,
                 ));
             }
@@ -448,55 +495,67 @@ fn model_variants(model: &ModelConfig, contexts: &[(String, String)]) -> Vec<Mod
 }
 
 fn model_variant(
-    model: &ModelConfig,
+    name: &str,
+    display_name: &str,
+    tooltip: &TooltipData,
     context: &str,
     context_name: &str,
-    effort: &str,
-    effort_name: &str,
+    effort: Option<(&str, &str)>,
     fast: bool,
 ) -> ModelVariant {
     let mut suffix = Vec::with_capacity(3);
     if context != DEFAULT_CONTEXT {
         suffix.push(context_name);
     }
-    suffix.push(effort_name);
+    if let Some((_, effort_name)) = effort {
+        suffix.push(effort_name);
+    }
     if fast {
         suffix.push("Fast");
     }
     let suffix = suffix.join(" ");
-    let display_name = format!(
-        "{} <span style=\"color: var(--cursor-text-tertiary);\">{suffix}</span>",
-        model.display_name
-    );
-    let is_default = context == DEFAULT_CONTEXT && effort == "high" && !fast;
+    let display_name = if suffix.is_empty() {
+        display_name.to_owned()
+    } else {
+        format!(
+            "{display_name} <span style=\"color: var(--cursor-text-tertiary);\">{suffix}</span>"
+        )
+    };
+    let is_default =
+        context == DEFAULT_CONTEXT && !fast && effort.is_none_or(|(effort, _)| effort == "high");
+    let mut parameter_values = vec![ModelParameterValue {
+        id: "context".into(),
+        value: context.into(),
+    }];
+    if let Some((effort, _)) = effort {
+        parameter_values.push(ModelParameterValue {
+            id: "reasoning".into(),
+            value: effort.into(),
+        });
+    }
+    parameter_values.push(ModelParameterValue {
+        id: "fast".into(),
+        value: fast.to_string(),
+    });
     ModelVariant {
-        parameter_values: vec![
-            ModelParameterValue {
-                id: "context".into(),
-                value: context.into(),
-            },
-            ModelParameterValue {
-                id: "reasoning".into(),
-                value: effort.into(),
-            },
-            ModelParameterValue {
-                id: "fast".into(),
-                value: fast.to_string(),
-            },
-        ],
+        parameter_values,
         display_name: display_name.clone(),
         is_max_mode: false,
         is_default_max_config: is_default.then_some(true),
         is_default_non_max_config: is_default.then_some(true),
-        tooltip_data: Some(model_tooltip(model)),
+        tooltip_data: Some(tooltip.clone()),
         display_name_outside_picker: Some(display_name),
-        variant_string_representation: Some(format!(
-            "{}[context={context},reasoning={effort},fast={fast}]",
-            model.model_hash
-        )),
+        variant_string_representation: Some(match effort {
+            Some((effort, _)) => {
+                format!("{name}[context={context},reasoning={effort},fast={fast}]")
+            }
+            None => format!("{name}[context={context},fast={fast}]"),
+        }),
         legacy_slug: Some(format!(
-            "{}-{context}-{effort}{}",
-            model.model_hash,
+            "{name}-{context}{}{}",
+            effort
+                .map(|(effort, _)| format!("-{effort}"))
+                .unwrap_or_default(),
             if fast { "-fast" } else { "" }
         )),
     }
@@ -505,6 +564,68 @@ fn model_variant(
 fn model_tooltip(model: &ModelConfig) -> TooltipData {
     TooltipData {
         markdown_content: Some(model.tooltip_data.clone()),
+    }
+}
+
+fn available_plugin_model(model: &PluginModelDescriptor) -> AvailableModel {
+    let tooltip = TooltipData {
+        markdown_content: model.description.clone(),
+    };
+    let contexts = context_options(model.context_window_tokens);
+    let variants = model_variants(
+        &model.id,
+        &model.display_name,
+        &tooltip,
+        &contexts,
+        model.thinking,
+    );
+    let legacy_slugs = variants
+        .iter()
+        .filter_map(|variant| variant.legacy_slug.clone())
+        .collect();
+    AvailableModel {
+        name: model.id.clone(),
+        default_on: true,
+        supports_agent: Some(true),
+        degradation_status: Some(0),
+        tooltip_data: Some(tooltip.clone()),
+        supports_thinking: Some(model.thinking),
+        supports_images: Some(model.images),
+        supports_max_mode: Some(false),
+        client_display_name: Some(model.display_name.clone()),
+        server_model_name: Some(model.id.clone()),
+        supports_non_max_mode: Some(true),
+        tooltip_data_for_max_mode: Some(tooltip.clone()),
+        is_recommended_for_background_composer: Some(false),
+        supports_plan_mode: Some(true),
+        inputbox_short_model_name: Some(model.display_name.clone()),
+        supports_sandboxing: Some(true),
+        supports_cmd_k: Some(false),
+        parameter_definitions: model_parameters(&contexts, model.thinking),
+        variants,
+        legacy_slugs,
+        named_model_section_index: Some(1),
+        vendor_name: Some(model.provider_type.clone()),
+        vendor: Some(AvailableModelVendor {
+            id: 6,
+            display_name: model.provider_type.clone(),
+        }),
+        model_picker_badges: vec![ModelPickerBadge {
+            label: model.provider_type.clone(),
+            variant: 1,
+            dismiss_on_selection: false,
+        }],
+    }
+}
+
+fn usable_plugin_model(model: &PluginModelDescriptor) -> agent::ModelDetails {
+    agent::ModelDetails {
+        model_id: model.id.clone(),
+        display_model_id: model.id.clone(),
+        display_name: model.display_name.clone(),
+        display_name_short: model.display_name.clone(),
+        thinking_details: model.thinking.then(agent::ThinkingDetails::default),
+        ..Default::default()
     }
 }
 

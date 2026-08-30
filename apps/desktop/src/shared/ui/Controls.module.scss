@@ -8,6 +8,7 @@
   background: var(--vscode-button-background);
   border: 0;
   border-radius: 5px;
+  &:disabled { opacity: .5; cursor: not-allowed; }
 }
 
 .secondary {

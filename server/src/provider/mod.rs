@@ -78,6 +78,60 @@ fn provider_event_error(label: &str, value: &serde_json::Value) -> Option<crate:
     Some(crate::Error::Provider(format!("{label} error: {message}")))
 }
 
+fn merge_extra_params(body: &mut serde_json::Value, extra: &serde_json::Value) -> Result<()> {
+    let extra = extra
+        .as_object()
+        .ok_or_else(|| crate::Error::Config("model extra params must be an object".into()))?;
+    let body = body
+        .as_object_mut()
+        .ok_or_else(|| crate::Error::Provider("provider request body must be an object".into()))?;
+    for (name, value) in extra {
+        if matches!(
+            name.as_str(),
+            "model"
+                | "stream"
+                | "messages"
+                | "input"
+                | "tools"
+                | "system"
+                | "instructions"
+                | "prompt_cache_key"
+        ) {
+            return Err(crate::Error::Config(format!(
+                "model extra params cannot replace {name}"
+            )));
+        }
+        body.insert(name.clone(), value.clone());
+    }
+    Ok(())
+}
+
+fn apply_body_allowlist(
+    body: &mut serde_json::Value,
+    allowed: Option<&std::collections::HashSet<String>>,
+) -> Result<()> {
+    let Some(allowed) = allowed else {
+        return Ok(());
+    };
+    body.as_object_mut()
+        .ok_or_else(|| crate::Error::Provider("provider request body must be an object".into()))?
+        .retain(|name, _| allowed.contains(name));
+    Ok(())
+}
+
+fn apply_openai_prompt_cache_key(body: &mut serde_json::Value, model_id: &str) -> Result<()> {
+    if !model_id.to_ascii_lowercase().contains("gpt") {
+        return Ok(());
+    }
+    body.as_object_mut()
+        .ok_or_else(|| crate::Error::Provider("provider request body must be an object".into()))?
+        .insert(
+            "prompt_cache_key".into(),
+            serde_json::Value::String("cursor-byok".into()),
+        );
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,45 +201,4 @@ mod tests {
         };
         assert_eq!(message, expected);
     }
-}
-
-fn merge_extra_params(body: &mut serde_json::Value, extra: &serde_json::Value) -> Result<()> {
-    let extra = extra
-        .as_object()
-        .ok_or_else(|| crate::Error::Config("model extra params must be an object".into()))?;
-    let body = body
-        .as_object_mut()
-        .ok_or_else(|| crate::Error::Provider("provider request body must be an object".into()))?;
-    for (name, value) in extra {
-        if matches!(
-            name.as_str(),
-            "model"
-                | "stream"
-                | "messages"
-                | "input"
-                | "tools"
-                | "system"
-                | "instructions"
-                | "prompt_cache_key"
-        ) {
-            return Err(crate::Error::Config(format!(
-                "model extra params cannot replace {name}"
-            )));
-        }
-        body.insert(name.clone(), value.clone());
-    }
-    Ok(())
-}
-
-fn apply_openai_prompt_cache_key(body: &mut serde_json::Value, model_id: &str) -> Result<()> {
-    if !model_id.to_ascii_lowercase().contains("gpt") {
-        return Ok(());
-    }
-    body.as_object_mut()
-        .ok_or_else(|| crate::Error::Provider("provider request body must be an object".into()))?
-        .insert(
-            "prompt_cache_key".into(),
-            serde_json::Value::String("cursor-byok".into()),
-        );
-    Ok(())
 }

@@ -9,6 +9,7 @@ use crate::{
         conversation::ConversationRegistry, prompting::PromptCompiler,
         services::observability::CursorTraceRecorder,
     },
+    plugin::PluginRegistry,
     provider::Provider,
     search::WebCache,
     store::Store,
@@ -28,6 +29,7 @@ struct RegistryInner {
     route_changed: Notify,
     store: Store,
     web_cache: WebCache,
+    plugins: Option<PluginRegistry>,
     conversations: ConversationRegistry,
 }
 
@@ -48,6 +50,26 @@ impl TransportRegistry {
         compiler: PromptCompiler,
         web_cache: WebCache,
     ) -> Self {
+        Self::build(store, provider, compiler, web_cache, None)
+    }
+
+    pub fn with_plugins(
+        store: Store,
+        provider: Arc<dyn Provider>,
+        compiler: PromptCompiler,
+        web_cache: WebCache,
+        plugins: PluginRegistry,
+    ) -> Self {
+        Self::build(store, provider, compiler, web_cache, Some(plugins))
+    }
+
+    fn build(
+        store: Store,
+        provider: Arc<dyn Provider>,
+        compiler: PromptCompiler,
+        web_cache: WebCache,
+        plugins: Option<PluginRegistry>,
+    ) -> Self {
         Self {
             inner: Arc::new(RegistryInner {
                 local: Mutex::new(HashMap::new()),
@@ -61,6 +83,7 @@ impl TransportRegistry {
                 ),
                 store,
                 web_cache,
+                plugins,
             }),
         }
     }
@@ -71,6 +94,10 @@ impl TransportRegistry {
 
     pub fn web_cache(&self) -> &WebCache {
         &self.inner.web_cache
+    }
+
+    pub fn plugins(&self) -> Option<&PluginRegistry> {
+        self.inner.plugins.as_ref()
     }
 
     pub fn conversations(&self) -> &ConversationRegistry {
