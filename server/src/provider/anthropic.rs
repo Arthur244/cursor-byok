@@ -1,3 +1,4 @@
+//! Implements the Anthropic provider adapter.
 use async_stream::try_stream;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use eventsource_stream::Eventsource;

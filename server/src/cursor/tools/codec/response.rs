@@ -1,11 +1,11 @@
+//! Decodes Tool execution responses received from Cursor.
 use crate::{
     cursor::{
-        interaction,
-        proto::agent::v1 as pb,
+        protocol::{events, proto::agent::v1 as pb},
         tools::{
             edit,
-            result::{self, ToolCompletion},
             runtime::{CursorToolRuntime, ExecStage, PendingExec},
+            tool_call_result::{self as result, ToolCompletion},
         },
     },
     model::ToolCall,
@@ -173,9 +173,9 @@ pub async fn stream_closed(id: u32, pending: &CursorToolRuntime) -> Result<Optio
     }
     let rendered = match &entry.stage {
         ExecStage::DynamicMcp(definition) => {
-            interaction::render_dynamic_mcp(&entry.call, definition, false)
+            super::render_dynamic_mcp(&entry.call, definition, false)
         }
-        _ => interaction::render_tool_call(&entry.call, false)?,
+        _ => super::render_tool_call(&entry.call, false)?,
     };
     Ok(Some(ToolCompletion::from_rendered(
         &entry.call,
@@ -340,7 +340,7 @@ fn shell_delta(call: &ToolCall, stdout: bool, content: &str) -> pb::AgentServerM
             content: content.into(),
         })
     };
-    interaction::server_interaction(pb::interaction_update::Message::ToolCallDelta(Box::new(
+    events::server_interaction(pb::interaction_update::Message::ToolCallDelta(Box::new(
         pb::ToolCallDeltaUpdate {
             call_id: call.call_id.clone(),
             tool_call_delta: Some(Box::new(pb::ToolCallDelta {

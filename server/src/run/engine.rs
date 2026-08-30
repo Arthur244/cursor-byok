@@ -1,13 +1,10 @@
+//! Executes one Run across model cycles, Tool rounds, and message commits.
 use std::collections::HashSet;
 use std::sync::Arc;
 
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    client::{
-        ClientCommand, ClientEvent, ClientPort, CommitBarrier, CommitCause, MessageInsertion,
-        StateCommitted,
-    },
     model::{
         CanonicalMessage, MessageContent, Origin, PreparedRun, Role, RunAction, ToolRoundAssistant,
         ToolRoundId, Usage,
@@ -16,12 +13,10 @@ use crate::{
     store::{RunStatus, Store},
 };
 
-use super::{consume_model_cycle, ModelCycleFailure, RunFailure, RunOutcome};
-
-const COMPACTION_RESERVE_TOKENS: u64 = 10_000;
-const COMPACTION_OUTPUT_TOKENS: u64 = 4_096;
-const COMPACTION_FALLBACK_CHARS: usize = 12_000;
-const COMPACTION_INSTRUCTIONS: &str = "Summarize the conversation for the next model turn. Preserve goals, constraints, decisions, files, commands, errors, results, and unfinished work. Do not call tools. Return only the concise durable summary.";
+use super::{
+    consume_model_cycle, CommitBarrier, CommitCause, MessagesCommitted, ModelCycleFailure,
+    RunCommand, RunEvent, RunFailure, RunOutcome, RunPort,
+};
 
 pub struct RunEngine {
     store: Store,
@@ -40,17 +35,15 @@ impl RunEngine {
     pub async fn run(
         &self,
         prepared: PreparedRun,
-        mut client: ClientPort,
+        mut client: RunPort,
         cancellation: CancellationToken,
     ) -> RunOutcome {
         let claimed = match self.store.claim_run(&prepared).await {
             Ok(claimed) => claimed,
             Err(error) => {
                 let outcome = RunOutcome::Failed(error.into());
-                let _ = client
-                    .events
-                    .send(ClientEvent::Ended(outcome.clone()))
-                    .await;
+                client.phase.finish();
+                let _ = client.events.send(RunEvent::Ended(outcome.clone())).await;
                 tracing::info!(outcome = ?outcome, "Run claim failed");
                 return outcome;
             }
@@ -58,7 +51,7 @@ impl RunEngine {
         let outcome = self
             .run_claimed(
                 &prepared,
-                claimed.head_revision_id,
+                claimed.head_checkpoint_id,
                 &mut client,
                 &cancellation,
             )
@@ -83,10 +76,8 @@ impl RunEngine {
         {
             tracing::error!(run_id = %prepared.run_id, %error, "failed to persist Run outcome");
         }
-        let _ = client
-            .events
-            .send(ClientEvent::Ended(outcome.clone()))
-            .await;
+        client.phase.finish();
+        let _ = client.events.send(RunEvent::Ended(outcome.clone())).await;
         tracing::info!(outcome = ?outcome, usage = ?usage, "Run ended");
         outcome
     }
@@ -94,13 +85,13 @@ impl RunEngine {
     async fn run_claimed(
         &self,
         prepared: &PreparedRun,
-        mut revision: crate::model::RevisionId,
-        client: &mut ClientPort,
+        mut checkpoint: crate::model::CheckpointId,
+        client: &mut RunPort,
         cancellation: &CancellationToken,
     ) -> (RunOutcome, Option<Usage>) {
         let mut usage = None;
         tracing::info!(
-            revision_id = revision.0,
+            checkpoint_id = checkpoint.0,
             "Run claimed conversation ownership"
         );
         if !prepared.initial_messages.is_empty() {
@@ -111,13 +102,13 @@ impl RunEngine {
                     .append_message_once(
                         &prepared.conversation_id,
                         &prepared.run_id,
-                        revision,
+                        checkpoint,
                         message,
                     )
                     .await
                 {
                     Ok((next, inserted)) => {
-                        revision = next;
+                        checkpoint = next;
                         changed |= inserted;
                     }
                     Err(error) => return (RunOutcome::Failed(error.into()), usage),
@@ -127,8 +118,8 @@ impl RunEngine {
                 let (barrier, ready) = CommitBarrier::before_continue();
                 if emit(
                     client,
-                    ClientEvent::StateCommitted(StateCommitted {
-                        revision_id: revision,
+                    RunEvent::MessagesCommitted(MessagesCommitted {
+                        checkpoint_id: checkpoint,
                         tool_round_version: 0,
                         cause: CommitCause::InitialMessages,
                         barrier,
@@ -149,12 +140,12 @@ impl RunEngine {
             pending_tool_round: Some(round),
         } = &prepared.action
         {
-            revision = match super::tool_round::execute(
+            checkpoint = match super::tool_round::execute(
                 &self.store,
                 prepared,
                 client,
                 cancellation,
-                revision,
+                checkpoint,
                 super::tool_round::ToolRound {
                     id: ToolRoundId::new(format!("{}:round:resume", prepared.run_id)),
                     assistant: round.assistant.clone(),
@@ -165,7 +156,7 @@ impl RunEngine {
             )
             .await
             {
-                Ok(revision) => revision,
+                Ok(checkpoint) => checkpoint,
                 Err(outcome) => return (outcome, usage),
             };
         }
@@ -175,7 +166,7 @@ impl RunEngine {
             if cancellation.is_cancelled() {
                 return (RunOutcome::Cancelled, usage);
             }
-            let messages = match self.store.load_revision_messages(revision).await {
+            let messages = match self.store.load_checkpoint_messages(checkpoint).await {
                 Ok(messages) => messages,
                 Err(error) => return (RunOutcome::Failed(error.into()), usage),
             };
@@ -188,7 +179,9 @@ impl RunEngine {
                     )
                     .await
                 {
-                    Ok(anchor) => anchor.and_then(ContextUsageAnchor::from_llm_call),
+                    Ok(anchor) => {
+                        anchor.and_then(super::compaction::ContextUsageAnchor::from_llm_call)
+                    }
                     Err(error) => return (RunOutcome::Failed(error.into()), usage),
                 }
             } else {
@@ -198,15 +191,16 @@ impl RunEngine {
                 Ok(history) => history,
                 Err(error) => return (RunOutcome::Failed(error.into()), usage),
             };
-            if !auto_compacted && should_auto_compact(prepared, &messages, &history, context_anchor)
+            if !auto_compacted
+                && super::compaction::should_compact(prepared, &messages, &history, context_anchor)
             {
                 auto_compacted = true;
                 match self
-                    .auto_compact(prepared, revision, &messages, client, cancellation)
+                    .auto_compact(prepared, checkpoint, &messages, client, cancellation)
                     .await
                 {
-                    Ok((next_revision, compaction_usage)) => {
-                        revision = next_revision;
+                    Ok((next_checkpoint, compaction_usage)) => {
+                        checkpoint = next_checkpoint;
                         if let Some(compaction_usage) = compaction_usage {
                             accumulate_usage(&mut usage, compaction_usage);
                         }
@@ -221,7 +215,7 @@ impl RunEngine {
             };
             tracing::debug!(
                 provider_call_index,
-                revision_id = revision.0,
+                checkpoint_id = checkpoint.0,
                 "starting model call"
             );
             let mut history = history;
@@ -253,23 +247,22 @@ impl RunEngine {
                 tokio::select! {
                     biased;
                     command = client.commands.recv() => {
-                        let message = match command {
-                            Some(ClientCommand::InsertMessages(insertion)) => {
+                        let interruption = match command {
+                            Some(RunCommand::InsertMessages(insertion)) => {
                                 pending_insertions.push(insertion);
                                 continue;
                             }
-                            Some(ClientCommand::InterruptWithMessage(message)) => message,
-                            Some(ClientCommand::RuntimeEvent(event)) => event.into_message(),
-                            Some(ClientCommand::Cancel) => {
+                            Some(RunCommand::BreakMessages(messages)) => messages,
+                            Some(RunCommand::Cancel) => {
                                 cycle_cancellation.cancel();
+                                let _ = cycle.await;
+                                let _ = emit(client, RunEvent::CycleInterrupted).await;
                                 return (RunOutcome::Cancelled, usage);
                             }
-                            Some(ClientCommand::ClientClosed { error }) => {
+                            Some(RunCommand::ToolResult(_)) => {
                                 cycle_cancellation.cancel();
-                                return (RunOutcome::Failed(RunFailure::Client(error)), usage);
-                            }
-                            Some(ClientCommand::ToolResult(_)) => {
-                                cycle_cancellation.cancel();
+                                let _ = cycle.await;
+                                let _ = emit(client, RunEvent::CycleInterrupted).await;
                                 return (
                                     RunOutcome::Failed(RunFailure::Protocol(
                                         "received a tool result while the model was running".into(),
@@ -279,6 +272,8 @@ impl RunEngine {
                             }
                             None => {
                                 cycle_cancellation.cancel();
+                                let _ = cycle.await;
+                                let _ = emit(client, RunEvent::CycleInterrupted).await;
                                 return (client_failure(), usage);
                             }
                         };
@@ -296,30 +291,33 @@ impl RunEngine {
                                 }
                             }
                         }
-                        revision = match append_insertions(
+                        if emit(client, RunEvent::CycleInterrupted).await.is_err() {
+                            return (client_failure(), usage);
+                        }
+                        checkpoint = match super::messages::append_batches(
                             &self.store,
                             prepared,
                             client,
                             cancellation,
-                            revision,
+                            checkpoint,
                             std::mem::take(&mut pending_insertions),
                         )
                         .await
                         {
-                            Ok((revision, _)) => revision,
+                            Ok((checkpoint, _)) => checkpoint,
                             Err(outcome) => return (outcome, usage),
                         };
-                        revision = match append_runtime_message(
+                        checkpoint = match super::messages::append_batches(
                             &self.store,
                             prepared,
                             client,
                             cancellation,
-                            revision,
-                            message,
+                            checkpoint,
+                            vec![interruption],
                         )
                         .await
                         {
-                            Ok((revision, _)) => revision,
+                            Ok((checkpoint, _)) => checkpoint,
                             Err(outcome) => return (outcome, usage),
                         };
                         continue 'model;
@@ -338,6 +336,7 @@ impl RunEngine {
                         accumulate_usage(&mut usage, cycle_usage);
                     }
                     if cancellation.is_cancelled() {
+                        let _ = emit(client, RunEvent::CycleInterrupted).await;
                         return (RunOutcome::Cancelled, usage);
                     }
                     return (RunOutcome::Failed(failure), usage);
@@ -379,24 +378,59 @@ impl RunEngine {
                     },
                     runtime_event_id: Some(event_id),
                 };
-                revision = match self
+                checkpoint = match self
                     .store
-                    .replace_revision(
+                    .replace_checkpoint(
                         &prepared.conversation_id,
                         &prepared.run_id,
-                        revision,
+                        checkpoint,
                         &[summary_message],
                     )
                     .await
                 {
-                    Ok(revision) => revision,
+                    Ok(checkpoint) => checkpoint,
                     Err(error) => return (RunOutcome::Failed(error.into()), usage),
                 };
+                if !pending_insertions.is_empty() {
+                    checkpoint = match super::messages::append_batches(
+                        &self.store,
+                        prepared,
+                        client,
+                        cancellation,
+                        checkpoint,
+                        pending_insertions,
+                    )
+                    .await
+                    {
+                        Ok((next, _)) => next,
+                        Err(outcome) => return (outcome, usage),
+                    };
+                }
+                client.phase.begin_finalizing();
+                let closing_insertions = match super::messages::drain_accepted(client) {
+                    Ok(insertions) => insertions,
+                    Err(outcome) => return (outcome, usage),
+                };
+                if !closing_insertions.is_empty() {
+                    checkpoint = match super::messages::append_batches(
+                        &self.store,
+                        prepared,
+                        client,
+                        cancellation,
+                        checkpoint,
+                        closing_insertions,
+                    )
+                    .await
+                    {
+                        Ok((next, _)) => next,
+                        Err(outcome) => return (outcome, usage),
+                    };
+                }
                 let (barrier, ready) = CommitBarrier::before_continue();
                 if emit(
                     client,
-                    ClientEvent::StateCommitted(StateCommitted {
-                        revision_id: revision,
+                    RunEvent::MessagesCommitted(MessagesCommitted {
+                        checkpoint_id: checkpoint,
                         tool_round_version: 0,
                         cause: CommitCause::Compaction { summary },
                         barrier,
@@ -427,32 +461,32 @@ impl RunEngine {
                     },
                     runtime_event_id: None,
                 };
-                revision = match self
+                checkpoint = match self
                     .store
-                    .append_revision(
+                    .append_checkpoint(
                         &prepared.conversation_id,
                         &prepared.run_id,
-                        revision,
+                        checkpoint,
                         &[assistant],
                     )
                     .await
                 {
-                    Ok(revision) => revision,
+                    Ok(checkpoint) => checkpoint,
                     Err(error) => return (RunOutcome::Failed(error.into()), usage),
                 };
                 if !pending_insertions.is_empty() {
-                    let inserted = match append_insertions(
+                    let inserted = match super::messages::append_batches(
                         &self.store,
                         prepared,
                         client,
                         cancellation,
-                        revision,
+                        checkpoint,
                         pending_insertions,
                     )
                     .await
                     {
                         Ok((next, inserted)) => {
-                            revision = next;
+                            checkpoint = next;
                             inserted
                         }
                         Err(outcome) => return (outcome, usage),
@@ -461,11 +495,33 @@ impl RunEngine {
                         continue 'model;
                     }
                 }
+                client.phase.begin_finalizing();
+                let closing_insertions = match super::messages::drain_accepted(client) {
+                    Ok(insertions) => insertions,
+                    Err(outcome) => return (outcome, usage),
+                };
+                if !closing_insertions.is_empty() {
+                    checkpoint = match super::messages::append_batches(
+                        &self.store,
+                        prepared,
+                        client,
+                        cancellation,
+                        checkpoint,
+                        closing_insertions,
+                    )
+                    .await
+                    {
+                        Ok((next, _)) => next,
+                        Err(outcome) => return (outcome, usage),
+                    };
+                    client.phase.resume_running();
+                    continue 'model;
+                }
                 let (barrier, ready) = CommitBarrier::before_continue();
                 if emit(
                     client,
-                    ClientEvent::StateCommitted(StateCommitted {
-                        revision_id: revision,
+                    RunEvent::MessagesCommitted(MessagesCommitted {
+                        checkpoint_id: checkpoint,
                         tool_round_version: 0,
                         cause: CommitCause::FinalTurn,
                         barrier,
@@ -484,12 +540,12 @@ impl RunEngine {
 
             let round_id =
                 ToolRoundId::new(format!("{}:round:{provider_call_index}", prepared.run_id));
-            revision = match super::tool_round::execute(
+            checkpoint = match super::tool_round::execute(
                 &self.store,
                 prepared,
                 client,
                 cancellation,
-                revision,
+                checkpoint,
                 super::tool_round::ToolRound {
                     id: round_id,
                     assistant: ToolRoundAssistant {
@@ -505,7 +561,7 @@ impl RunEngine {
             )
             .await
             {
-                Ok(revision) => revision,
+                Ok(checkpoint) => checkpoint,
                 Err(outcome) => return (outcome, usage),
             };
         }
@@ -514,23 +570,23 @@ impl RunEngine {
     async fn auto_compact(
         &self,
         prepared: &PreparedRun,
-        revision: crate::model::RevisionId,
+        checkpoint: crate::model::CheckpointId,
         messages: &[CanonicalMessage],
-        client: &mut ClientPort,
+        client: &mut RunPort,
         cancellation: &CancellationToken,
-    ) -> std::result::Result<(crate::model::RevisionId, Option<Usage>), RunOutcome> {
+    ) -> std::result::Result<(crate::model::CheckpointId, Option<Usage>), RunOutcome> {
         let current_ids = prepared
             .initial_messages
             .iter()
             .map(|message| message.message_id.as_str())
             .collect::<HashSet<_>>();
         let (compactable, retained_request_context) =
-            auto_compaction_partition(messages, &current_ids);
+            super::compaction::partition(messages, &current_ids);
         if compactable.is_empty() {
-            return Ok((revision, None));
+            return Ok((checkpoint, None));
         }
 
-        emit(client, ClientEvent::AutoCompactionStarted)
+        emit(client, RunEvent::AutoCompactionStarted)
             .await
             .map_err(|_| client_failure())?;
         let provider_call_index = self
@@ -541,7 +597,7 @@ impl RunEngine {
         let history = crate::model::project_messages(&compactable)
             .map_err(|error| RunOutcome::Failed(error.into()))?;
         let mut model = prepared.model.clone();
-        model.max_output_tokens = Some(COMPACTION_OUTPUT_TOKENS);
+        model.max_output_tokens = Some(super::compaction::OUTPUT_TOKENS);
         model.reasoning.enabled = false;
         model.reasoning.effort = None;
         let invocation = crate::model::ModelInvocation {
@@ -551,7 +607,7 @@ impl RunEngine {
             provider_call_index,
             request: crate::model::ModelRequest {
                 prompt: crate::model::PromptSpec {
-                    instructions: COMPACTION_INSTRUCTIONS.into(),
+                    instructions: super::compaction::INSTRUCTIONS.into(),
                     tools: Vec::new(),
                 },
                 model,
@@ -562,7 +618,7 @@ impl RunEngine {
         let (silent_events, mut discarded_events) = tokio::sync::mpsc::channel(256);
         let drain = tokio::spawn(async move { while discarded_events.recv().await.is_some() {} });
         let mut pending_insertions = Vec::new();
-        let mut interrupted_message = None;
+        let mut break_messages = None;
         let cycle = {
             let cycle = consume_model_cycle(
                 self.provider.stream(invocation, cycle_cancellation.clone()),
@@ -574,35 +630,29 @@ impl RunEngine {
                 tokio::select! {
                     biased;
                     command = client.commands.recv() => match command {
-                        Some(ClientCommand::InsertMessages(insertion)) => {
+                        Some(RunCommand::InsertMessages(insertion)) => {
                             pending_insertions.push(insertion);
                         }
-                        Some(ClientCommand::InterruptWithMessage(message)) => {
+                        Some(RunCommand::BreakMessages(messages)) => {
                             cycle_cancellation.cancel();
-                            interrupted_message = Some(message);
+                            break_messages = Some(messages);
                             break cycle.await;
                         }
-                        Some(ClientCommand::RuntimeEvent(event)) => {
+                        Some(RunCommand::Cancel) => {
                             cycle_cancellation.cancel();
-                            interrupted_message = Some(event.into_message());
-                            break cycle.await;
-                        }
-                        Some(ClientCommand::Cancel) => {
-                            cycle_cancellation.cancel();
+                            let _ = cycle.await;
                             return Err(RunOutcome::Cancelled);
                         }
-                        Some(ClientCommand::ClientClosed { error }) => {
+                        Some(RunCommand::ToolResult(_)) => {
                             cycle_cancellation.cancel();
-                            return Err(RunOutcome::Failed(RunFailure::Client(error)));
-                        }
-                        Some(ClientCommand::ToolResult(_)) => {
-                            cycle_cancellation.cancel();
+                            let _ = cycle.await;
                             return Err(RunOutcome::Failed(RunFailure::Protocol(
                                 "received a tool result while automatic compaction was running".into(),
                             )));
                         }
                         None => {
                             cycle_cancellation.cancel();
+                            let _ = cycle.await;
                             return Err(client_failure());
                         }
                     },
@@ -612,19 +662,31 @@ impl RunEngine {
         };
         drop(silent_events);
         let _ = drain.await;
-        let (summary, compaction_usage) = match (interrupted_message.is_some(), cycle) {
-            (true, Ok(cycle)) => (fallback_summary(&compactable), cycle.usage),
-            (true, Err(failure)) => (fallback_summary(&compactable), failure.usage),
+        let (summary, compaction_usage) = match (break_messages.is_some(), cycle) {
+            (true, Ok(cycle)) => (
+                super::compaction::fallback_summary(&compactable),
+                cycle.usage,
+            ),
+            (true, Err(failure)) => (
+                super::compaction::fallback_summary(&compactable),
+                failure.usage,
+            ),
             (false, Ok(cycle)) if cycle.calls.is_empty() && !cycle.text.trim().is_empty() => {
                 (cycle.text.trim().to_string(), cycle.usage)
             }
             (false, Ok(cycle)) => {
                 tracing::warn!("automatic compaction returned no usable summary; using fallback");
-                (fallback_summary(&compactable), cycle.usage)
+                (
+                    super::compaction::fallback_summary(&compactable),
+                    cycle.usage,
+                )
             }
             (false, Err(failure)) => {
                 tracing::warn!(error = ?failure.failure, "automatic compaction model failed; using fallback");
-                (fallback_summary(&compactable), failure.usage)
+                (
+                    super::compaction::fallback_summary(&compactable),
+                    failure.usage,
+                )
             }
         };
         let event_id = format!("summary:auto:{}", prepared.run_id);
@@ -642,12 +704,12 @@ impl RunEngine {
         let mut replacement = retained_request_context.into_iter().collect::<Vec<_>>();
         replacement.push(summary_message);
         replacement.extend(prepared.initial_messages.iter().cloned());
-        let mut revision = self
+        let mut checkpoint = self
             .store
-            .replace_revision(
+            .replace_checkpoint(
                 &prepared.conversation_id,
                 &prepared.run_id,
-                revision,
+                checkpoint,
                 &replacement,
             )
             .await
@@ -655,8 +717,8 @@ impl RunEngine {
         let (barrier, ready) = CommitBarrier::before_continue();
         emit(
             client,
-            ClientEvent::StateCommitted(StateCommitted {
-                revision_id: revision,
+            RunEvent::MessagesCommitted(MessagesCommitted {
+                checkpoint_id: checkpoint,
                 tool_round_version: 0,
                 cause: CommitCause::Compaction { summary },
                 barrier,
@@ -665,202 +727,33 @@ impl RunEngine {
         .await
         .map_err(|_| client_failure())?;
         wait_for_state_ready(ready, cancellation).await?;
-        emit(client, ClientEvent::AutoCompactionCompleted)
+        emit(client, RunEvent::AutoCompactionCompleted)
             .await
             .map_err(|_| client_failure())?;
-        revision = append_insertions(
+        checkpoint = super::messages::append_batches(
             &self.store,
             prepared,
             client,
             cancellation,
-            revision,
+            checkpoint,
             pending_insertions,
         )
         .await?
         .0;
-        if let Some(message) = interrupted_message {
-            revision = append_runtime_message(
+        if let Some(messages) = break_messages {
+            checkpoint = super::messages::append_batches(
                 &self.store,
                 prepared,
                 client,
                 cancellation,
-                revision,
-                message,
+                checkpoint,
+                vec![messages],
             )
             .await?
             .0;
         }
-        Ok((revision, compaction_usage))
+        Ok((checkpoint, compaction_usage))
     }
-}
-
-fn auto_compaction_partition(
-    messages: &[CanonicalMessage],
-    current_ids: &HashSet<&str>,
-) -> (Vec<CanonicalMessage>, Option<CanonicalMessage>) {
-    let latest_request_context = messages
-        .iter()
-        .rposition(|message| message.message_id.starts_with("request-context:"));
-    let compactable = messages
-        .iter()
-        .enumerate()
-        .filter(|(index, message)| {
-            Some(*index) != latest_request_context
-                && !current_ids.contains(message.message_id.as_str())
-        })
-        .map(|(_, message)| message.clone())
-        .collect();
-    let retained = latest_request_context
-        .and_then(|index| messages.get(index))
-        .filter(|message| !current_ids.contains(message.message_id.as_str()))
-        .cloned();
-    (compactable, retained)
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct ContextUsageAnchor {
-    input_tokens: u64,
-    message_count: usize,
-    tool_count: usize,
-}
-
-impl ContextUsageAnchor {
-    fn from_llm_call(anchor: crate::model::LlmCallUsageAnchor) -> Option<Self> {
-        Some(Self {
-            input_tokens: anchor.usage.context_input_tokens(anchor.request_type)?,
-            message_count: anchor.message_count,
-            tool_count: anchor.tool_count,
-        })
-    }
-}
-
-fn should_auto_compact(
-    prepared: &PreparedRun,
-    messages: &[CanonicalMessage],
-    projected_messages: &[crate::model::ProjectedMessage],
-    anchor: Option<ContextUsageAnchor>,
-) -> bool {
-    if prepared.action != RunAction::Start {
-        return false;
-    }
-    let Some(context_window) = prepared.model.context_window_tokens else {
-        return false;
-    };
-    if context_window <= COMPACTION_RESERVE_TOKENS
-        || messages.len() <= prepared.initial_messages.len()
-    {
-        return false;
-    }
-    let estimated_input = anchor
-        .filter(|anchor| {
-            anchor.message_count <= projected_messages.len()
-                && anchor.tool_count == prepared.prompt.tools.len()
-        })
-        .map(|anchor| {
-            anchor.input_tokens.saturating_add(estimate_message_tokens(
-                &projected_messages[anchor.message_count..],
-            ))
-        })
-        .unwrap_or_else(|| estimate_context_tokens(&prepared.prompt, messages));
-    estimated_input > context_window.saturating_sub(COMPACTION_RESERVE_TOKENS)
-}
-
-fn estimate_context_tokens(
-    prompt: &crate::model::PromptSpec,
-    messages: &[CanonicalMessage],
-) -> u64 {
-    let serialized = serde_json::to_string(&(prompt, messages)).unwrap_or_default();
-    estimate_serialized_tokens(&serialized)
-}
-
-fn estimate_message_tokens<T: serde::Serialize>(messages: &[T]) -> u64 {
-    let serialized = serde_json::to_string(messages).unwrap_or_default();
-    estimate_serialized_tokens(&serialized)
-}
-
-fn estimate_serialized_tokens(serialized: &str) -> u64 {
-    serialized
-        .chars()
-        .fold(0_u64, |units, character| {
-            units.saturating_add(if character.is_ascii() { 273 } else { 550 })
-        })
-        .div_ceil(1_000)
-}
-
-fn fallback_summary(messages: &[CanonicalMessage]) -> String {
-    let serialized = serde_json::to_string(messages).unwrap_or_default();
-    let start = serialized
-        .char_indices()
-        .rev()
-        .nth(COMPACTION_FALLBACK_CHARS.saturating_sub(1))
-        .map_or(0, |(index, _)| index);
-    format!(
-        "Durable recent conversation state:\n{}",
-        &serialized[start..]
-    )
-}
-
-pub(super) async fn append_insertions(
-    store: &Store,
-    prepared: &PreparedRun,
-    client: &mut ClientPort,
-    cancellation: &CancellationToken,
-    mut revision: crate::model::RevisionId,
-    insertions: Vec<MessageInsertion>,
-) -> std::result::Result<(crate::model::RevisionId, bool), RunOutcome> {
-    let mut inserted_any = false;
-    for insertion in insertions {
-        for message in insertion.messages {
-            let (next, inserted) =
-                append_runtime_message(store, prepared, client, cancellation, revision, message)
-                    .await?;
-            revision = next;
-            inserted_any |= inserted;
-        }
-        let _ = insertion.delivered.send(());
-    }
-    Ok((revision, inserted_any))
-}
-
-pub(super) async fn append_runtime_message(
-    store: &Store,
-    prepared: &PreparedRun,
-    client: &mut ClientPort,
-    cancellation: &CancellationToken,
-    revision: crate::model::RevisionId,
-    message: CanonicalMessage,
-) -> std::result::Result<(crate::model::RevisionId, bool), RunOutcome> {
-    let event_id = message.runtime_event_id.clone().ok_or_else(|| {
-        RunOutcome::Failed(RunFailure::Protocol(
-            "runtime message has no event identity".into(),
-        ))
-    })?;
-    let (revision, inserted) = store
-        .append_message_once(
-            &prepared.conversation_id,
-            &prepared.run_id,
-            revision,
-            &message,
-        )
-        .await
-        .map_err(|error| RunOutcome::Failed(error.into()))?;
-    if !inserted {
-        return Ok((revision, false));
-    }
-    let (barrier, ready) = CommitBarrier::before_continue();
-    emit(
-        client,
-        ClientEvent::StateCommitted(StateCommitted {
-            revision_id: revision,
-            tool_round_version: 0,
-            cause: CommitCause::RuntimeEvent { event_id },
-            barrier,
-        }),
-    )
-    .await
-    .map_err(|_| client_failure())?;
-    wait_for_state_ready(ready, cancellation).await?;
-    Ok((revision, true))
 }
 
 async fn hydrate_tool_images(
@@ -920,11 +813,11 @@ pub(super) async fn wait_for_state_ready(
     }
 }
 
-async fn emit(client: &ClientPort, event: ClientEvent) -> Result<(), ()> {
+pub(super) async fn emit(client: &RunPort, event: RunEvent) -> Result<(), ()> {
     client.events.send(event).await.map_err(|_| ())
 }
 
-fn client_failure() -> RunOutcome {
+pub(super) fn client_failure() -> RunOutcome {
     RunOutcome::Failed(RunFailure::Client("client event channel closed".into()))
 }
 
@@ -934,295 +827,5 @@ fn failure_message(failure: &RunFailure) -> String {
         | RunFailure::Provider(message)
         | RunFailure::Store(message)
         | RunFailure::Client(message) => message.clone(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        auto_compaction_partition, estimate_context_tokens, hydrate_tool_images,
-        should_auto_compact, ContextUsageAnchor,
-    };
-    use crate::{
-        model::{
-            CanonicalMessage, ContentPart, ConversationId, MessageContent, ModelSpec, Origin,
-            PreparedRun, ProjectedContent, ProjectedMessage, PromptSpec, RevisionId, Role,
-            RunAction, RunId, RunKind, ToolCallContent, ToolImageReference, ToolResultContent,
-            ToolRoundId,
-        },
-        store::Store,
-    };
-    use std::collections::HashSet;
-
-    #[test]
-    fn context_estimate_grows_with_prompt_history() {
-        let prompt = PromptSpec {
-            instructions: "system".into(),
-            tools: Vec::new(),
-        };
-        let short = vec![CanonicalMessage::text(
-            "short",
-            Role::User,
-            Origin::User,
-            "hello",
-        )];
-        let long = vec![CanonicalMessage::text(
-            "long",
-            Role::User,
-            Origin::User,
-            "x".repeat(100_000),
-        )];
-
-        assert!(estimate_context_tokens(&prompt, &long) > 25_000);
-        assert!(estimate_context_tokens(&prompt, &long) > estimate_context_tokens(&prompt, &short));
-    }
-
-    #[test]
-    fn real_previous_input_only_estimates_messages_added_after_the_anchor() {
-        let old_history =
-            CanonicalMessage::text("old-history", Role::User, Origin::User, "x".repeat(698_641));
-        let current_runtime = CanonicalMessage::text(
-            "runtime:current",
-            Role::User,
-            Origin::Runtime,
-            "current request",
-        );
-        let messages = vec![old_history, current_runtime.clone()];
-        let prepared = PreparedRun {
-            run_id: RunId::new("run"),
-            cursor_request_id: None,
-            conversation_id: ConversationId::new("conversation"),
-            kind: RunKind::Root,
-            model: ModelSpec {
-                context_window_tokens: Some(200_000),
-                ..ModelSpec::new("model")
-            },
-            prompt: PromptSpec {
-                instructions: "system".into(),
-                tools: Vec::new(),
-            },
-            initial_messages: vec![current_runtime],
-            action: RunAction::Start,
-            base_revision_id: RevisionId(1),
-        };
-        let anchor = ContextUsageAnchor {
-            input_tokens: 140_649,
-            message_count: 1,
-            tool_count: 0,
-        };
-
-        assert_eq!(
-            estimate_context_tokens(&prepared.prompt, &messages),
-            190_813
-        );
-        let projected = crate::model::project_messages(&messages).unwrap();
-        assert!(!should_auto_compact(
-            &prepared,
-            &messages,
-            &projected,
-            Some(anchor)
-        ));
-    }
-
-    #[test]
-    fn real_previous_input_compacts_after_the_new_message_crosses_the_reserve() {
-        let old_history =
-            CanonicalMessage::text("old-history", Role::User, Origin::User, "old history");
-        let current_runtime = CanonicalMessage::text(
-            "runtime:current",
-            Role::User,
-            Origin::Runtime,
-            "x".repeat(190_000),
-        );
-        let messages = vec![old_history, current_runtime.clone()];
-        let prepared = PreparedRun {
-            run_id: RunId::new("run"),
-            cursor_request_id: None,
-            conversation_id: ConversationId::new("conversation"),
-            kind: RunKind::Root,
-            model: ModelSpec {
-                context_window_tokens: Some(200_000),
-                ..ModelSpec::new("model")
-            },
-            prompt: PromptSpec {
-                instructions: "system".into(),
-                tools: Vec::new(),
-            },
-            initial_messages: vec![current_runtime],
-            action: RunAction::Start,
-            base_revision_id: RevisionId(1),
-        };
-        let anchor = ContextUsageAnchor {
-            input_tokens: 140_649,
-            message_count: 1,
-            tool_count: 0,
-        };
-
-        let projected = crate::model::project_messages(&messages).unwrap();
-        assert!(should_auto_compact(
-            &prepared,
-            &messages,
-            &projected,
-            Some(anchor)
-        ));
-    }
-
-    #[test]
-    fn projected_anchor_does_not_recount_canonical_tool_round_fragments() {
-        let assistant = |message_id: &str, call_id: &str, text: String, index| CanonicalMessage {
-            message_id: message_id.into(),
-            role: Role::Assistant,
-            origin: Origin::Assistant,
-            content: MessageContent::Assistant {
-                text,
-                thinking: String::new(),
-                tool_round_id: Some(ToolRoundId::new("round")),
-                replay_state: None,
-                tool_calls: vec![ToolCallContent {
-                    index,
-                    call_id: call_id.into(),
-                    name: "Shell".into(),
-                    arguments: serde_json::json!({}),
-                }],
-            },
-            runtime_event_id: None,
-        };
-        let result = |message_id: &str, call_id: &str| CanonicalMessage {
-            message_id: message_id.into(),
-            role: Role::Tool,
-            origin: Origin::Tool,
-            content: MessageContent::ToolResult(ToolResultContent {
-                call_id: call_id.into(),
-                name: "Shell".into(),
-                content: "ok".into(),
-                is_error: false,
-                image: None,
-                provider_parts: Vec::new(),
-            }),
-            runtime_event_id: None,
-        };
-        let messages = vec![
-            assistant("assistant-1", "call-1", "first".into(), 0),
-            result("result-1", "call-1"),
-            assistant("assistant-2", "call-2", "x".repeat(100_000), 1),
-            result("result-2", "call-2"),
-        ];
-        let projected = crate::model::project_messages(&messages).unwrap();
-        assert_eq!(messages.len(), 4);
-        assert_eq!(projected.len(), 3);
-
-        let prepared = PreparedRun {
-            run_id: RunId::new("run"),
-            cursor_request_id: None,
-            conversation_id: ConversationId::new("conversation"),
-            kind: RunKind::Root,
-            model: ModelSpec {
-                context_window_tokens: Some(20_000),
-                ..ModelSpec::new("model")
-            },
-            prompt: PromptSpec {
-                instructions: "system".into(),
-                tools: Vec::new(),
-            },
-            initial_messages: Vec::new(),
-            action: RunAction::Start,
-            base_revision_id: RevisionId(1),
-        };
-        let anchor = ContextUsageAnchor {
-            input_tokens: 1_000,
-            message_count: 1,
-            tool_count: 0,
-        };
-
-        assert!(!should_auto_compact(
-            &prepared,
-            &messages,
-            &projected,
-            Some(anchor)
-        ));
-    }
-
-    #[test]
-    fn auto_compaction_preserves_only_the_latest_request_context() {
-        let first_context = CanonicalMessage::text(
-            "request-context:first",
-            Role::User,
-            Origin::Prompt,
-            "old rules",
-        );
-        let old_runtime =
-            CanonicalMessage::text("runtime:first", Role::User, Origin::Runtime, "old query");
-        let latest_context = CanonicalMessage::text(
-            "request-context:second",
-            Role::User,
-            Origin::Prompt,
-            "new rules",
-        );
-        let current_runtime = CanonicalMessage::text(
-            "runtime:current",
-            Role::User,
-            Origin::Runtime,
-            "current query",
-        );
-        let messages = vec![
-            first_context.clone(),
-            old_runtime.clone(),
-            latest_context.clone(),
-            current_runtime,
-        ];
-        let current_ids = HashSet::from(["runtime:current"]);
-
-        let (compactable, retained) = auto_compaction_partition(&messages, &current_ids);
-
-        assert_eq!(compactable, vec![first_context, old_runtime]);
-        assert_eq!(retained, Some(latest_context));
-    }
-
-    #[tokio::test]
-    async fn read_image_is_loaded_only_for_the_provider_projection() {
-        let directory = tempfile::tempdir().unwrap();
-        let store = Store::connect(&format!(
-            "sqlite://{}",
-            directory.path().join("test.db").display()
-        ))
-        .await
-        .unwrap();
-        let data = b"\x89PNG\r\n\x1a\nimage";
-        let id = store.put_blob(data, &[]).await.unwrap();
-        let mut messages = vec![ProjectedMessage {
-            message_id: "result".into(),
-            role: Role::Tool,
-            content: ProjectedContent::ToolResult(ToolResultContent {
-                call_id: "call".into(),
-                name: "Read".into(),
-                content: "Read image file: /tmp/image.png".into(),
-                is_error: false,
-                image: Some(ToolImageReference {
-                    blob_id: id.to_base64(),
-                    mime_type: "image/png".into(),
-                    path: "/tmp/image.png".into(),
-                }),
-                provider_parts: Vec::new(),
-            }),
-        }];
-
-        hydrate_tool_images(&store, &mut messages).await.unwrap();
-        let ProjectedContent::ToolResult(result) = &messages[0].content else {
-            panic!("not a tool result");
-        };
-        assert_eq!(
-            result.provider_parts,
-            vec![
-                ContentPart::Text {
-                    text: "Read image file: /tmp/image.png".into()
-                },
-                ContentPart::Image {
-                    mime_type: "image/png".into(),
-                    data: data.to_vec()
-                }
-            ]
-        );
-        let persisted = serde_json::to_value(result).unwrap();
-        assert!(persisted.get("provider_parts").is_none());
     }
 }

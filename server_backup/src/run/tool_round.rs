@@ -1,0 +1,262 @@
+use std::collections::HashSet;
+
+use tokio_util::sync::CancellationToken;
+
+use crate::{
+    model::{PreparedRun, RevisionId, ToolCall, ToolResult, ToolRoundAssistant, ToolRoundId},
+    store::Store,
+};
+
+use super::{
+    ClientCommand, ClientEvent, ClientPort, CommitBarrier, CommitCause, MessageInsertion,
+    RunFailure, RunOutcome, StateCommitted,
+};
+
+pub(super) struct ToolRound {
+    pub id: ToolRoundId,
+    pub assistant: ToolRoundAssistant,
+    pub calls: Vec<ToolCall>,
+    pub recovered_started_at_ms: Option<u64>,
+}
+
+pub(super) async fn execute(
+    store: &Store,
+    prepared: &PreparedRun,
+    client: &mut ClientPort,
+    cancellation: &CancellationToken,
+    mut revision: RevisionId,
+    round: ToolRound,
+    insertions: Vec<MessageInsertion>,
+) -> std::result::Result<RevisionId, RunOutcome> {
+    let ToolRound {
+        id: round_id,
+        assistant,
+        calls,
+        recovered_started_at_ms,
+    } = round;
+    store
+        .create_tool_round(
+            &round_id,
+            &prepared.run_id,
+            revision,
+            &assistant,
+            &calls,
+            recovered_started_at_ms,
+        )
+        .await
+        .map_err(failed)?;
+    tracing::info!(
+        round_id = %round_id,
+        revision_id = revision.0,
+        calls = calls.len(),
+        "tool round started"
+    );
+    send(
+        client,
+        ClientEvent::StateCommitted(StateCommitted {
+            revision_id: revision,
+            tool_round_version: 0,
+            cause: CommitCause::ToolRoundStarted(round_id.clone()),
+            barrier: CommitBarrier::None,
+        }),
+    )
+    .await?;
+    send(
+        client,
+        ClientEvent::ExecuteToolRound {
+            round_id: round_id.clone(),
+            calls: calls.clone(),
+        },
+    )
+    .await?;
+
+    let mut remaining = calls.len();
+    let mut completed_call_ids = HashSet::new();
+    let mut pending_runtime_messages = insertions
+        .into_iter()
+        .map(PendingRuntimeMessage::Insertion)
+        .collect::<Vec<_>>();
+    while remaining > 0 {
+        let command = tokio::select! {
+            _ = cancellation.cancelled() => return Err(RunOutcome::Cancelled),
+            command = client.commands.recv() => command,
+        };
+        match command {
+            Some(ClientCommand::ToolResult(result)) => {
+                let call_id = result.call_id.clone();
+                let committed = store
+                    .commit_tool_result(
+                        &prepared.conversation_id,
+                        &prepared.run_id,
+                        &round_id,
+                        &result,
+                    )
+                    .await
+                    .map_err(failed)?;
+                revision = committed.revision_id;
+                completed_call_ids.insert(call_id.clone());
+                tracing::info!(
+                    round_id = %round_id,
+                    call_id,
+                    revision_id = revision.0,
+                    tool_round_version = committed.tool_round_version,
+                    completion_seq = committed.completion_seq,
+                    settled = committed.settled,
+                    "tool result committed"
+                );
+                remaining -= 1;
+                let (barrier, ready) = if committed.settled {
+                    let (barrier, ready) = CommitBarrier::before_continue();
+                    (barrier, Some(ready))
+                } else {
+                    (CommitBarrier::None, None)
+                };
+                send(
+                    client,
+                    ClientEvent::StateCommitted(StateCommitted {
+                        revision_id: revision,
+                        tool_round_version: committed.tool_round_version,
+                        cause: CommitCause::ToolResult {
+                            call_id,
+                            interrupted: false,
+                        },
+                        barrier,
+                    }),
+                )
+                .await?;
+                if let Some(ready) = ready {
+                    super::engine::wait_for_state_ready(ready, cancellation).await?;
+                }
+            }
+            Some(ClientCommand::RuntimeEvent(event)) => {
+                pending_runtime_messages.push(PendingRuntimeMessage::Message(event.into_message()));
+            }
+            Some(ClientCommand::InterruptWithMessage(message)) => {
+                for call in calls
+                    .iter()
+                    .filter(|call| !completed_call_ids.contains(&call.call_id))
+                {
+                    let result = ToolResult {
+                        call_id: call.call_id.clone(),
+                        content: "Tool execution was interrupted by a newer user message.".into(),
+                        is_error: true,
+                        image: None,
+                    };
+                    let committed = store
+                        .commit_tool_result(
+                            &prepared.conversation_id,
+                            &prepared.run_id,
+                            &round_id,
+                            &result,
+                        )
+                        .await
+                        .map_err(failed)?;
+                    revision = committed.revision_id;
+                    let (barrier, ready) = if committed.settled {
+                        let (barrier, ready) = CommitBarrier::before_continue();
+                        (barrier, Some(ready))
+                    } else {
+                        (CommitBarrier::None, None)
+                    };
+                    send(
+                        client,
+                        ClientEvent::StateCommitted(StateCommitted {
+                            revision_id: revision,
+                            tool_round_version: committed.tool_round_version,
+                            cause: CommitCause::ToolResult {
+                                call_id: call.call_id.clone(),
+                                interrupted: true,
+                            },
+                            barrier,
+                        }),
+                    )
+                    .await?;
+                    if let Some(ready) = ready {
+                        super::engine::wait_for_state_ready(ready, cancellation).await?;
+                    }
+                }
+                for pending in pending_runtime_messages {
+                    revision =
+                        append_pending(store, prepared, client, cancellation, revision, pending)
+                            .await?;
+                }
+                revision = super::engine::append_runtime_message(
+                    store,
+                    prepared,
+                    client,
+                    cancellation,
+                    revision,
+                    message,
+                )
+                .await?
+                .0;
+                return Ok(revision);
+            }
+            Some(ClientCommand::InsertMessages(insertion)) => {
+                pending_runtime_messages.push(PendingRuntimeMessage::Insertion(insertion))
+            }
+            Some(ClientCommand::Cancel) => return Err(RunOutcome::Cancelled),
+            Some(ClientCommand::ClientClosed { error }) => {
+                return Err(RunOutcome::Failed(RunFailure::Client(error)));
+            }
+            None => return Err(client_failure()),
+        }
+    }
+    for pending in pending_runtime_messages {
+        revision = append_pending(store, prepared, client, cancellation, revision, pending).await?;
+    }
+    Ok(revision)
+}
+
+enum PendingRuntimeMessage {
+    Message(crate::model::CanonicalMessage),
+    Insertion(MessageInsertion),
+}
+
+async fn append_pending(
+    store: &Store,
+    prepared: &PreparedRun,
+    client: &mut ClientPort,
+    cancellation: &CancellationToken,
+    revision: RevisionId,
+    pending: PendingRuntimeMessage,
+) -> std::result::Result<RevisionId, RunOutcome> {
+    match pending {
+        PendingRuntimeMessage::Message(message) => Ok(super::engine::append_runtime_message(
+            store,
+            prepared,
+            client,
+            cancellation,
+            revision,
+            message,
+        )
+        .await?
+        .0),
+        PendingRuntimeMessage::Insertion(insertion) => Ok(super::engine::append_insertions(
+            store,
+            prepared,
+            client,
+            cancellation,
+            revision,
+            vec![insertion],
+        )
+        .await?
+        .0),
+    }
+}
+
+async fn send(client: &ClientPort, event: ClientEvent) -> std::result::Result<(), RunOutcome> {
+    client
+        .events
+        .send(event)
+        .await
+        .map_err(|_| client_failure())
+}
+
+fn failed(error: crate::Error) -> RunOutcome {
+    RunOutcome::Failed(error.into())
+}
+
+fn client_failure() -> RunOutcome {
+    RunOutcome::Failed(RunFailure::Client("client event channel closed".into()))
+}

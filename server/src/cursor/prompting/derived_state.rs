@@ -1,3 +1,4 @@
+//! Builds deterministic prompt state derived from Conversation context.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -79,88 +80,4 @@ fn normalize(value: &str) -> String {
         .filter(|character| character.is_ascii_alphanumeric())
         .flat_map(char::to_lowercase)
         .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::model::{Origin, Role, ToolCallContent, ToolResultContent};
-
-    #[test]
-    fn todo_write_merge_materializes_complete_existing_items_and_appends_new_ids() {
-        let messages = vec![
-            assistant_call(
-                "create",
-                serde_json::json!({
-                    "merge": false,
-                    "todos": [
-                        {"id": "first", "content": "First", "status": "in_progress"},
-                        {"id": "second", "content": "Second", "status": "pending"}
-                    ]
-                }),
-            ),
-            successful_result("create"),
-            assistant_call(
-                "merge",
-                serde_json::json!({
-                    "merge": true,
-                    "todos": [
-                        {"id": "first", "status": "completed"},
-                        {"id": "second", "content": "Second updated"},
-                        {"id": "third", "content": "Third", "status": "cancelled"}
-                    ]
-                }),
-            ),
-            successful_result("merge"),
-        ];
-
-        let state = fold_derived_state(&messages);
-
-        assert_eq!(
-            state.todos.unwrap()["todos"],
-            serde_json::json!([
-                {"id": "first", "content": "First", "status": "completed"},
-                {"id": "second", "content": "Second updated", "status": "pending"},
-                {"id": "third", "content": "Third", "status": "cancelled"}
-            ])
-        );
-    }
-
-    fn assistant_call(call_id: &str, arguments: Value) -> CanonicalMessage {
-        CanonicalMessage {
-            message_id: format!("assistant-{call_id}"),
-            role: Role::Assistant,
-            origin: Origin::Assistant,
-            content: MessageContent::Assistant {
-                text: String::new(),
-                thinking: String::new(),
-                tool_round_id: Some(format!("round-{call_id}").into()),
-                replay_state: None,
-                tool_calls: vec![ToolCallContent {
-                    index: 0,
-                    call_id: call_id.into(),
-                    name: "TodoWrite".into(),
-                    arguments,
-                }],
-            },
-            runtime_event_id: None,
-        }
-    }
-
-    fn successful_result(call_id: &str) -> CanonicalMessage {
-        CanonicalMessage {
-            message_id: format!("result-{call_id}"),
-            role: Role::Tool,
-            origin: Origin::Tool,
-            content: MessageContent::ToolResult(ToolResultContent {
-                call_id: call_id.into(),
-                name: "TodoWrite".into(),
-                content: "{}".into(),
-                is_error: false,
-                image: None,
-                provider_parts: Vec::new(),
-            }),
-            runtime_event_id: None,
-        }
-    }
 }

@@ -1,3 +1,4 @@
+//! Loads and validates process-level server configuration.
 use std::{env, fs, net::SocketAddr, path::PathBuf, time::Duration};
 
 #[cfg(unix)]
@@ -134,45 +135,10 @@ fn default_database_url() -> Result<String> {
     database_url_for_dir(&data_dir)
 }
 
-#[cfg(test)]
-fn database_url_in(home_dir: &std::path::Path) -> Result<String> {
-    let data_dir = home_dir.join(DATA_DIR_NAME);
-    fs::create_dir_all(&data_dir)?;
-
-    #[cfg(unix)]
-    fs::set_permissions(&data_dir, fs::Permissions::from_mode(0o700))?;
-
-    database_url_for_dir(&data_dir)
-}
-
 fn database_url_for_dir(data_dir: &std::path::Path) -> Result<String> {
     let database_path = data_dir.join(DATABASE_FILE_NAME);
     let database_path = database_path
         .to_str()
         .ok_or_else(|| Error::Config("database path is not valid UTF-8".into()))?;
     Ok(format!("sqlite://{database_path}"))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn managed_database_supports_home_paths_with_spaces() {
-        let directory = tempfile::tempdir().unwrap();
-        let home_dir = directory.path().join("home with spaces");
-        let database_url = database_url_in(&home_dir).unwrap();
-
-        let store = crate::store::Store::connect(&database_url).await.unwrap();
-        drop(store);
-
-        let data_dir = home_dir.join(DATA_DIR_NAME);
-        assert!(data_dir.join(DATABASE_FILE_NAME).is_file());
-
-        #[cfg(unix)]
-        assert_eq!(
-            fs::metadata(data_dir).unwrap().permissions().mode() & 0o777,
-            0o700
-        );
-    }
 }

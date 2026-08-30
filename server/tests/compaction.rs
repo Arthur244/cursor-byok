@@ -1,3 +1,4 @@
+//! Verifies explicit and automatic context compaction behavior.
 #[path = "support/fake_provider.rs"]
 mod fake_provider;
 #[path = "support/fixtures.rs"]
@@ -7,7 +8,10 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use cursor_server::{
     cursor::prompting::{PromptAssets, PromptCompiler},
-    cursor::{connect, proto::agent::v1 as pb, CursorCommand, CursorSessionRegistry},
+    cursor::{
+        protocol::{connect, proto::agent::v1 as pb},
+        TransportCommand, TransportRegistry,
+    },
     model::{
         ContentPart, ConversationId, MessageContent, ModelConfigInput, ModelType, Origin,
         ProjectedContent, Role, Usage, OPENAI_CHAT_ENDPOINT,
@@ -70,11 +74,10 @@ async fn summarize_replaces_model_history_and_preserves_cursor_history() {
             .as_path(),
     )
     .unwrap();
-    let registry = CursorSessionRegistry::new(
+    let registry = TransportRegistry::new(
         store.clone(),
         Arc::new(provider.clone()),
         PromptCompiler::new(assets),
-        Default::default(),
     );
 
     let first = run(
@@ -199,14 +202,14 @@ struct Output {
 }
 
 async fn run(
-    registry: &CursorSessionRegistry,
+    registry: &TransportRegistry,
     request_id: &str,
     request: pb::AgentClientMessage,
 ) -> Output {
     let handle = registry.get_or_create(request_id).await.unwrap();
     let mut receiver = handle.subscribe();
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: 0,
             message: Box::new(request),
         })
@@ -230,7 +233,7 @@ async fn run(
                     output.blobs.insert(set.blob_id, set.blob_data);
                 }
                 handle
-                    .command(CursorCommand::Append {
+                    .command(TransportCommand::Append {
                         seqno: append_seqno,
                         message: Box::new(kv_ack(kv.id)),
                     })

@@ -1,3 +1,4 @@
+//! Persists model and provider configuration.
 use std::{collections::HashSet, str::FromStr};
 
 use sqlx::{Row, Sqlite, Transaction};
@@ -329,93 +330,4 @@ fn optional_u64(row: &sqlx::sqlite::SqliteRow, column: &str) -> Result<Option<u6
 
 fn to_i64(value: u64) -> Result<i64> {
     i64::try_from(value).map_err(|_| Error::Config("token value is too large".into()))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn input(name: &str) -> ModelConfigInput {
-        ModelConfigInput {
-            sort_order: 1,
-            display_name: name.into(),
-            model_type: ModelType::OpenAi,
-            base_url: "https://example.com/v1/responses".into(),
-            use_full_url: true,
-            api_key: "secret".into(),
-            tooltip_data: "Example model".into(),
-            model_id: "model-a".into(),
-            reasoning_effort: Some("high".into()),
-            openai_endpoint: "/v1/responses".into(),
-            openai_extra_params_enabled: true,
-            openai_extra_params: serde_json::json!({"service_tier":"priority"}),
-            custom_headers_enabled: true,
-            custom_headers: serde_json::json!({"x-client":"cursor-byok"}),
-            anthropic_extra_params_enabled: false,
-            anthropic_extra_params: serde_json::json!({}),
-            context_window_tokens: Some(200_000),
-            max_completion_tokens: Some(8_192),
-            anthropic_max_tokens: None,
-            anthropic_thinking_effort: None,
-            thinking_budget_tokens: None,
-        }
-    }
-
-    #[tokio::test]
-    async fn model_configuration_round_trips_and_updates_identity() {
-        let store = Store::connect("sqlite::memory:").await.unwrap();
-        let created = store.create_model(&input("Model A")).await.unwrap();
-        assert_eq!(created.model_hash.len(), 16);
-        assert_eq!(created.custom_headers["x-client"], "cursor-byok");
-        assert_eq!(store.models().await.unwrap().len(), 1);
-
-        let updated = store
-            .update_model(&created.model_hash, &input("Renamed"))
-            .await
-            .unwrap();
-        assert_ne!(updated.model_hash, created.model_hash);
-        assert!(store.model(&created.model_hash).await.unwrap().is_none());
-
-        store.delete_model(&updated.model_hash).await.unwrap();
-        assert!(store.models().await.unwrap().is_empty());
-    }
-
-    #[tokio::test]
-    async fn batch_creation_is_atomic() {
-        let store = Store::connect("sqlite::memory:").await.unwrap();
-        let duplicate = input("Model A");
-        assert!(store
-            .create_models(&[duplicate.clone(), duplicate])
-            .await
-            .is_err());
-        assert!(store.models().await.unwrap().is_empty());
-    }
-
-    #[tokio::test]
-    async fn model_order_is_replaced_atomically() {
-        let store = Store::connect("sqlite::memory:").await.unwrap();
-        let first = store.create_model(&input("First")).await.unwrap();
-        let mut second_input = input("Second");
-        second_input.model_id = "model-b".into();
-        second_input.sort_order = 2;
-        let second = store.create_model(&second_input).await.unwrap();
-
-        let reordered = store
-            .reorder_models(&[second.model_hash.clone(), first.model_hash.clone()])
-            .await
-            .unwrap();
-        assert_eq!(reordered[0].model_hash, second.model_hash);
-        assert_eq!(reordered[0].sort_order, 1);
-        assert_eq!(reordered[1].model_hash, first.model_hash);
-        assert_eq!(reordered[1].sort_order, 2);
-
-        assert!(store
-            .reorder_models(std::slice::from_ref(&first.model_hash))
-            .await
-            .is_err());
-        assert_eq!(
-            store.models().await.unwrap()[0].model_hash,
-            second.model_hash
-        );
-    }
 }

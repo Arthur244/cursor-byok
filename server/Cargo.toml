@@ -1,3 +1,4 @@
+# Defines the server crate, binaries, and dependency graph.
 [package]
 name = "cursor-server"
 version = "0.1.0"

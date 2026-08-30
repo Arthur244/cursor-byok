@@ -1,3 +1,4 @@
+//! Defines the provider interface and exports provider implementations.
 mod anthropic;
 mod event;
 mod normalize;

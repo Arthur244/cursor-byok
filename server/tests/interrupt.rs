@@ -1,3 +1,4 @@
+//! Verifies BreakMessages, cancellation, shutdown, and Finalizing races.
 #[path = "support/fake_provider.rs"]
 mod fake_provider;
 #[path = "support/fixtures.rs"]
@@ -8,56 +9,172 @@ use std::sync::Arc;
 use bytes::Bytes;
 use cursor_server::{
     cursor::prompting::{PromptAssets, PromptCompiler},
-    cursor::{connect, proto::agent::v1 as pb},
-    cursor::{CursorCommand, CursorSessionRegistry},
+    cursor::protocol::{connect, proto::agent::v1 as pb},
+    cursor::{TransportCommand, TransportRegistry},
     model::{
-        ConversationId, ModelConfigInput, ModelSpec, ModelType, PreparedRun, PromptSpec, RunAction,
-        RunId, RunKind, Usage, OPENAI_CHAT_ENDPOINT,
+        CanonicalMessage, ConversationId, ModelConfigInput, ModelSpec, ModelType, Origin,
+        PreparedRun, PromptSpec, Role, RunAction, RunId, RunKind, Usage, OPENAI_CHAT_ENDPOINT,
     },
     provider::{FinishReason, ModelEvent},
-    run::RunRegistry,
+    run::{self, CommandResult, CommitCause, RunEngine, RunEvent, RunOutcome, RunPhase},
     store::RunStatus,
 };
 use prost::Message;
-use tokio_util::sync::CancellationToken;
 
 #[tokio::test]
-async fn generic_run_registry_cancels_the_previous_client_for_a_conversation() {
-    let registry = RunRegistry::default();
-    let conversation = cursor_server::model::ConversationId::new("conversation");
-    let first = CancellationToken::new();
-    let second = CancellationToken::new();
-    registry
-        .activate(
-            conversation.clone(),
-            cursor_server::model::RunId::new("first"),
-            first.clone(),
-            cursor_server::client::session(1).1.commands,
-        )
-        .await;
-    registry
-        .activate(
-            conversation.clone(),
-            cursor_server::model::RunId::new("second"),
-            second.clone(),
-            cursor_server::client::session(1).1.commands,
-        )
-        .await;
+async fn finalizing_rejects_late_messages_for_the_next_run() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let conversation_id = ConversationId::new("finalizing-conversation");
+    let base_checkpoint_id = store.ensure_conversation(&conversation_id).await.unwrap();
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(vec![
+        ModelEvent::Start {
+            model_call_id: "final-call".into(),
+        },
+        ModelEvent::TextStart,
+        ModelEvent::TextDelta("done".into()),
+        ModelEvent::TextEnd,
+        ModelEvent::Done(FinishReason::Stop),
+    ]);
+    let prepared = PreparedRun {
+        run_id: RunId::new("finalizing-run"),
+        cursor_request_id: None,
+        conversation_id,
+        kind: RunKind::Root,
+        model: ModelSpec::new("model"),
+        prompt: PromptSpec {
+            instructions: String::new(),
+            tools: Vec::new(),
+        },
+        initial_messages: Vec::new(),
+        action: RunAction::Resume {
+            pending_tool_round: None,
+        },
+        base_checkpoint_id,
+    };
+    let (port, mut session, handle) = run::channel(prepared.run_id.clone(), 32);
+    let cancellation = handle.cancellation();
+    let task = tokio::spawn(async move {
+        RunEngine::new(store, Arc::new(provider))
+            .run(prepared, port, cancellation)
+            .await
+    });
 
-    assert!(first.is_cancelled());
-    assert!(!second.is_cancelled());
-    registry
-        .release(&conversation, &cursor_server::model::RunId::new("first"))
-        .await;
-    registry.shutdown().await;
-    assert!(second.is_cancelled());
+    loop {
+        match session.events.recv().await.unwrap() {
+            RunEvent::MessagesCommitted(committed) if committed.cause == CommitCause::FinalTurn => {
+                assert_eq!(handle.phase(), RunPhase::Finalizing);
+                assert_eq!(
+                    handle
+                        .insert_messages(
+                            "late-event".into(),
+                            vec![CanonicalMessage::text(
+                                "late-message",
+                                Role::User,
+                                Origin::Runtime,
+                                "late",
+                            )],
+                        )
+                        .await,
+                    CommandResult::RunClosing
+                );
+                committed.barrier.complete(Ok(()));
+            }
+            RunEvent::Ended(outcome) => {
+                assert_eq!(outcome, RunOutcome::Completed);
+                break;
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(task.await.unwrap(), RunOutcome::Completed);
+}
+
+#[tokio::test]
+async fn break_messages_emits_one_cycle_boundary_before_the_runtime_commit() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let conversation_id = ConversationId::new("cycle-boundary-conversation");
+    let base_checkpoint_id = store.ensure_conversation(&conversation_id).await.unwrap();
+    let provider = fake_provider::FakeProvider::default();
+    provider.push_pending();
+    provider.push(text_response("continued"));
+    let prepared = PreparedRun {
+        run_id: RunId::new("cycle-boundary-run"),
+        cursor_request_id: None,
+        conversation_id,
+        kind: RunKind::Root,
+        model: ModelSpec::new("model"),
+        prompt: PromptSpec {
+            instructions: String::new(),
+            tools: Vec::new(),
+        },
+        initial_messages: Vec::new(),
+        action: RunAction::Resume {
+            pending_tool_round: None,
+        },
+        base_checkpoint_id,
+    };
+    let (port, mut session, handle) = run::channel(prepared.run_id.clone(), 32);
+    let cancellation = handle.cancellation();
+    let engine_store = store.clone();
+    let engine_provider = provider.clone();
+    let engine = tokio::spawn(async move {
+        RunEngine::new(engine_store, Arc::new(engine_provider))
+            .run(prepared, port, cancellation)
+            .await
+    });
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
+    while provider.requests().is_empty() {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "first model cycle did not start"
+        );
+        tokio::task::yield_now().await;
+    }
+    let mut message = CanonicalMessage::text(
+        "cycle-boundary-message",
+        Role::User,
+        Origin::Runtime,
+        "new information",
+    );
+    message.runtime_event_id = Some("cycle-boundary-event".into());
+    let command = tokio::spawn({
+        let handle = handle.clone();
+        async move {
+            handle
+                .break_messages("cycle-boundary-event".into(), vec![message])
+                .await
+        }
+    });
+
+    let mut lifecycle = Vec::new();
+    loop {
+        match session.events.recv().await.unwrap() {
+            RunEvent::CycleInterrupted => lifecycle.push("interrupted"),
+            RunEvent::MessagesCommitted(committed) => {
+                if matches!(committed.cause, CommitCause::RuntimeEvent { .. }) {
+                    lifecycle.push("runtime-committed");
+                }
+                committed.barrier.complete(Ok(()));
+            }
+            RunEvent::Ended(outcome) => {
+                assert_eq!(outcome, RunOutcome::Completed);
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    assert_eq!(lifecycle, ["interrupted", "runtime-committed"]);
+    assert_eq!(command.await.unwrap(), CommandResult::Applied);
+    assert_eq!(engine.await.unwrap(), RunOutcome::Completed);
 }
 
 #[tokio::test]
 async fn a_replaced_run_cannot_overwrite_its_cancelled_status() {
     let (_directory, store) = fixtures::temp_store().await;
     let conversation_id = ConversationId::new("conversation");
-    let base_revision_id = store.ensure_conversation(&conversation_id).await.unwrap();
+    let base_checkpoint_id = store.ensure_conversation(&conversation_id).await.unwrap();
     let prepared = |run_id: &str| PreparedRun {
         run_id: RunId::new(run_id),
         cursor_request_id: None,
@@ -72,7 +189,7 @@ async fn a_replaced_run_cannot_overwrite_its_cancelled_status() {
         action: RunAction::Resume {
             pending_tool_round: None,
         },
-        base_revision_id,
+        base_checkpoint_id,
     };
     let first = prepared("first");
     let second = prepared("second");
@@ -133,18 +250,16 @@ async fn registry_shutdown_cancels_runs_and_closes_run_sse_outputs() {
             .as_path(),
     )
     .unwrap();
-    let registry = CursorSessionRegistry::new(
+    let registry = TransportRegistry::new(
         store,
         Arc::new(fake_provider::FakeProvider::default()),
         PromptCompiler::new(assets),
-        Default::default(),
     );
     let handle = registry.get_or_create("active-run").await.unwrap();
     let mut output = handle.subscribe();
 
     registry.shutdown().await;
 
-    assert!(handle.cancellation().is_cancelled());
     let terminal = output.recv().await.expect("canceled EndStream");
     let (flags, payload) = connect::decode_frames(&terminal).unwrap().pop().unwrap();
     assert_eq!(flags, connect::END_STREAM_FLAG);
@@ -162,18 +277,17 @@ async fn client_heartbeat_returns_a_server_protocol_heartbeat() {
             .as_path(),
     )
     .unwrap();
-    let registry = CursorSessionRegistry::new(
+    let registry = TransportRegistry::new(
         store,
         Arc::new(fake_provider::FakeProvider::default()),
         PromptCompiler::new(assets),
-        Default::default(),
     );
     let handle = registry.get_or_create("heartbeat-run").await.unwrap();
     let mut output = handle.subscribe();
 
-    cursor_server::cursor::bidi_append::append(
+    cursor_server::api::cursor::bidi::append(
         &registry,
-        cursor_server::cursor::bidi_append::DecodedAppend {
+        cursor_server::api::cursor::bidi::DecodedAppend {
             request_id: "heartbeat-run".into(),
             // A transport heartbeat must not wait for missing application messages.
             seqno: 1,
@@ -232,16 +346,11 @@ async fn runtime_cancel_action_aborts_active_exec_before_canceled_end_stream() {
             .as_path(),
     )
     .unwrap();
-    let registry = CursorSessionRegistry::new(
-        store,
-        Arc::new(provider),
-        PromptCompiler::new(assets),
-        Default::default(),
-    );
+    let registry = TransportRegistry::new(store, Arc::new(provider), PromptCompiler::new(assets));
     let handle = registry.get_or_create("cancel-request").await.unwrap();
     let mut output = handle.subscribe();
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: 0,
             message: Box::new(client_run()),
         })
@@ -265,7 +374,7 @@ async fn runtime_cancel_action_aborts_active_exec_before_canceled_end_stream() {
         match server.message {
             Some(pb::agent_server_message::Message::KvServerMessage(kv)) => {
                 handle
-                    .command(CursorCommand::Append {
+                    .command(TransportCommand::Append {
                         seqno: append_seqno,
                         message: Box::new(kv_ack(kv.id)),
                     })
@@ -279,7 +388,7 @@ async fn runtime_cancel_action_aborts_active_exec_before_canceled_end_stream() {
     };
 
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: append_seqno,
             message: Box::new(runtime_cancel_action()),
         })
@@ -325,11 +434,10 @@ async fn runtime_user_message_action_interrupts_and_continues_with_new_message()
             .as_path(),
     )
     .unwrap();
-    let registry = CursorSessionRegistry::new(
+    let registry = TransportRegistry::new(
         store,
         Arc::new(provider.clone()),
         PromptCompiler::new(assets),
-        Default::default(),
     );
     let handle = registry
         .get_or_create("user-message-request")
@@ -337,7 +445,7 @@ async fn runtime_user_message_action_interrupts_and_continues_with_new_message()
         .unwrap();
     let mut output = handle.subscribe();
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: 0,
             message: Box::new(client_run_for(
                 "user-message-request",
@@ -365,7 +473,7 @@ async fn runtime_user_message_action_interrupts_and_continues_with_new_message()
         }
     }
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: append_seqno,
             message: Box::new(runtime_user_message()),
         })
@@ -393,7 +501,6 @@ async fn runtime_user_message_action_interrupts_and_continues_with_new_message()
         acknowledge_kv(&handle, &mut append_seqno, &frame).await;
     }
     assert!(saw_continued);
-    assert!(!handle.cancellation().is_cancelled());
     assert_eq!(provider.requests().len(), 2);
     let history = serde_json::to_string(&provider.requests()[1].history).unwrap();
     assert!(history.contains("queued follow-up"));
@@ -419,16 +526,15 @@ async fn injected_user_context_restarts_only_the_active_model_cycle() {
             .as_path(),
     )
     .unwrap();
-    let registry = CursorSessionRegistry::new(
+    let registry = TransportRegistry::new(
         store,
         Arc::new(provider.clone()),
         PromptCompiler::new(assets),
-        Default::default(),
     );
     let handle = registry.get_or_create("inject-request").await.unwrap();
     let mut output = handle.subscribe();
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: 0,
             message: Box::new(client_run_for("inject-request", "inject-conversation")),
         })
@@ -449,7 +555,7 @@ async fn injected_user_context_restarts_only_the_active_model_cycle() {
         }
     }
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: append_seqno,
             message: Box::new(runtime_injection()),
         })
@@ -506,7 +612,6 @@ async fn injected_user_context_restarts_only_the_active_model_cycle() {
     assert_eq!(requests.len(), 2);
     let continued_history = serde_json::to_string(&requests[1].history).unwrap();
     assert!(continued_history.contains("injected follow-up"));
-    assert!(!handle.cancellation().is_cancelled());
     assert_eq!(
         protocol_events,
         [
@@ -530,11 +635,10 @@ async fn injected_user_context_aborts_pending_tools_and_ignores_late_results() {
             .as_path(),
     )
     .unwrap();
-    let registry = CursorSessionRegistry::new(
+    let registry = TransportRegistry::new(
         store,
         Arc::new(provider.clone()),
         PromptCompiler::new(assets),
-        Default::default(),
     );
     let handle = registry
         .get_or_create("interrupt-tool-request")
@@ -542,7 +646,7 @@ async fn injected_user_context_aborts_pending_tools_and_ignores_late_results() {
         .unwrap();
     let mut output = handle.subscribe();
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: 0,
             message: Box::new(client_run_for(
                 "interrupt-tool-request",
@@ -555,7 +659,7 @@ async fn injected_user_context_aborts_pending_tools_and_ignores_late_results() {
     let mut append_seqno = 1;
     let exec_id = wait_for_exec(&handle, &mut output, &mut append_seqno, "Read").await;
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: append_seqno,
             message: Box::new(runtime_injection_for(
                 "tool-injection",
@@ -593,7 +697,7 @@ async fn injected_user_context_aborts_pending_tools_and_ignores_late_results() {
     }
 
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: append_seqno,
             message: Box::new(read_success(exec_id)),
         })
@@ -641,11 +745,10 @@ async fn injected_user_context_detaches_subagents_without_cancelling_them() {
             .as_path(),
     )
     .unwrap();
-    let registry = CursorSessionRegistry::new(
+    let registry = TransportRegistry::new(
         store,
         Arc::new(provider.clone()),
         PromptCompiler::new(assets),
-        Default::default(),
     );
     let handle = registry
         .get_or_create("detach-subagent-request")
@@ -653,7 +756,7 @@ async fn injected_user_context_detaches_subagents_without_cancelling_them() {
         .unwrap();
     let mut output = handle.subscribe();
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: 0,
             message: Box::new(client_run_for(
                 "detach-subagent-request",
@@ -666,7 +769,7 @@ async fn injected_user_context_detaches_subagents_without_cancelling_them() {
     let mut append_seqno = 1;
     let exec_id = wait_for_exec(&handle, &mut output, &mut append_seqno, "Task").await;
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: append_seqno,
             message: Box::new(runtime_injection_for(
                 "subagent-injection",
@@ -702,7 +805,7 @@ async fn injected_user_context_detaches_subagents_without_cancelling_them() {
     }
 
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: append_seqno,
             message: Box::new(subagent_success(exec_id)),
         })
@@ -757,11 +860,10 @@ async fn injected_user_context_interrupts_automatic_compaction() {
             .as_path(),
     )
     .unwrap();
-    let registry = CursorSessionRegistry::new(
+    let registry = TransportRegistry::new(
         store,
         Arc::new(provider.clone()),
         PromptCompiler::new(assets),
-        Default::default(),
     );
 
     let seed_state = run_to_end(
@@ -798,7 +900,7 @@ async fn injected_user_context_interrupts_automatic_compaction() {
         },
     );
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: 0,
             message: Box::new(compacting_request),
         })
@@ -819,7 +921,7 @@ async fn injected_user_context_interrupts_automatic_compaction() {
         }
     }
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: append_seqno,
             message: Box::new(runtime_injection_for(
                 "compaction-injection",
@@ -884,16 +986,15 @@ async fn stale_context_injection_is_rejected_without_failing_the_active_run() {
             .as_path(),
     )
     .unwrap();
-    let registry = CursorSessionRegistry::new(
+    let registry = TransportRegistry::new(
         store,
         Arc::new(provider.clone()),
         PromptCompiler::new(assets),
-        Default::default(),
     );
     let handle = registry.get_or_create("active-request").await.unwrap();
     let mut output = handle.subscribe();
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: 0,
             message: Box::new(client_run_for(
                 "active-request",
@@ -917,7 +1018,7 @@ async fn stale_context_injection_is_rejected_without_failing_the_active_run() {
         }
     }
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: append_seqno,
             message: Box::new(runtime_injection_for("stale-injection", "replaced-request")),
         })
@@ -925,7 +1026,7 @@ async fn stale_context_injection_is_rejected_without_failing_the_active_run() {
         .unwrap();
     append_seqno += 1;
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: append_seqno,
             message: Box::new(runtime_injection_for("stale-injection", "replaced-request")),
         })
@@ -985,6 +1086,67 @@ async fn stale_context_injection_is_rejected_without_failing_the_active_run() {
 }
 
 #[tokio::test]
+async fn unsupported_runtime_action_is_ignored_without_failing_the_active_run() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    let release = provider.push_gated(text_response("active run completed"));
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store,
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+    let handle = registry
+        .get_or_create("unsupported-action-request")
+        .await
+        .unwrap();
+    let mut output = handle.subscribe();
+    handle
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(client_run_for(
+                "unsupported-action-request",
+                "unsupported-action-conversation",
+            )),
+        })
+        .await
+        .unwrap();
+
+    let mut append_seqno = 1;
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    while provider.requests().is_empty() {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "provider did not start"
+        );
+        if let Ok(Some(frame)) =
+            tokio::time::timeout(std::time::Duration::from_millis(20), output.recv()).await
+        {
+            acknowledge_kv(&handle, &mut append_seqno, &frame).await;
+        }
+    }
+
+    handle
+        .command(TransportCommand::Append {
+            seqno: append_seqno,
+            message: Box::new(runtime_unsupported_action()),
+        })
+        .await
+        .unwrap();
+    append_seqno += 1;
+    tokio::task::yield_now().await;
+    release.notify_one();
+
+    drain_successfully(&handle, &mut output, &mut append_seqno).await;
+    assert_eq!(provider.requests().len(), 1);
+}
+
+#[tokio::test]
 async fn cancel_subagent_action_aborts_the_target_task_and_keeps_the_parent_running() {
     let (_directory, store) = fixtures::temp_store().await;
     let provider = fake_provider::FakeProvider::default();
@@ -1025,11 +1187,10 @@ async fn cancel_subagent_action_aborts_the_target_task_and_keeps_the_parent_runn
             .as_path(),
     )
     .unwrap();
-    let registry = CursorSessionRegistry::new(
+    let registry = TransportRegistry::new(
         store,
         Arc::new(provider.clone()),
         PromptCompiler::new(assets),
-        Default::default(),
     );
     let handle = registry
         .get_or_create("cancel-subagent-request")
@@ -1037,7 +1198,7 @@ async fn cancel_subagent_action_aborts_the_target_task_and_keeps_the_parent_runn
         .unwrap();
     let mut output = handle.subscribe();
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: 0,
             message: Box::new(client_run_for(
                 "cancel-subagent-request",
@@ -1059,7 +1220,7 @@ async fn cancel_subagent_action_aborts_the_target_task_and_keeps_the_parent_runn
         match server.message {
             Some(pb::agent_server_message::Message::KvServerMessage(kv)) => {
                 handle
-                    .command(CursorCommand::Append {
+                    .command(TransportCommand::Append {
                         seqno: append_seqno,
                         message: Box::new(kv_ack(kv.id)),
                     })
@@ -1080,7 +1241,7 @@ async fn cancel_subagent_action_aborts_the_target_task_and_keeps_the_parent_runn
     };
 
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: append_seqno,
             message: Box::new(runtime_cancel_subagent("task-call")),
         })
@@ -1107,7 +1268,7 @@ async fn cancel_subagent_action_aborts_the_target_task_and_keeps_the_parent_runn
             }
             Some(pb::agent_server_message::Message::KvServerMessage(kv)) => {
                 handle
-                    .command(CursorCommand::Append {
+                    .command(TransportCommand::Append {
                         seqno: append_seqno,
                         message: Box::new(kv_ack(kv.id)),
                     })
@@ -1120,7 +1281,7 @@ async fn cancel_subagent_action_aborts_the_target_task_and_keeps_the_parent_runn
     }
 
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: append_seqno,
             message: Box::new(subagent_aborted(exec_id)),
         })
@@ -1143,7 +1304,7 @@ async fn cancel_subagent_action_aborts_the_target_task_and_keeps_the_parent_runn
         match server.message {
             Some(pb::agent_server_message::Message::KvServerMessage(kv)) => {
                 handle
-                    .command(CursorCommand::Append {
+                    .command(TransportCommand::Append {
                         seqno: append_seqno,
                         message: Box::new(kv_ack(kv.id)),
                     })
@@ -1161,7 +1322,6 @@ async fn cancel_subagent_action_aborts_the_target_task_and_keeps_the_parent_runn
     }
 
     assert!(saw_continued);
-    assert!(!handle.cancellation().is_cancelled());
     assert_eq!(provider.requests().len(), 2);
 }
 
@@ -1255,7 +1415,7 @@ fn tool_response(call_id: &str, name: &str, arguments: &str) -> Vec<ModelEvent> 
 }
 
 async fn wait_for_exec(
-    handle: &cursor_server::cursor::CursorSessionHandle,
+    handle: &cursor_server::cursor::TransportHandle,
     output: &mut tokio::sync::mpsc::UnboundedReceiver<Bytes>,
     append_seqno: &mut i64,
     tool: &str,
@@ -1283,7 +1443,7 @@ async fn wait_for_exec(
 }
 
 async fn drain_successfully(
-    handle: &cursor_server::cursor::CursorSessionHandle,
+    handle: &cursor_server::cursor::TransportHandle,
     output: &mut tokio::sync::mpsc::UnboundedReceiver<Bytes>,
     append_seqno: &mut i64,
 ) {
@@ -1343,14 +1503,14 @@ fn subagent_success(id: u32) -> pb::AgentClientMessage {
 }
 
 async fn run_to_end(
-    registry: &CursorSessionRegistry,
+    registry: &TransportRegistry,
     request_id: &str,
     request: pb::AgentClientMessage,
 ) -> pb::ConversationStateStructure {
     let handle = registry.get_or_create(request_id).await.unwrap();
     let mut output = handle.subscribe();
     handle
-        .command(CursorCommand::Append {
+        .command(TransportCommand::Append {
             seqno: 0,
             message: Box::new(request),
         })
@@ -1379,7 +1539,7 @@ async fn run_to_end(
 }
 
 async fn acknowledge_kv(
-    handle: &cursor_server::cursor::CursorSessionHandle,
+    handle: &cursor_server::cursor::TransportHandle,
     append_seqno: &mut i64,
     frame: &[u8],
 ) {
@@ -1390,7 +1550,7 @@ async fn acknowledge_kv(
     let server = pb::AgentServerMessage::decode(payload).unwrap();
     if let Some(pb::agent_server_message::Message::KvServerMessage(kv)) = server.message {
         handle
-            .command(CursorCommand::Append {
+            .command(TransportCommand::Append {
                 seqno: *append_seqno,
                 message: Box::new(kv_ack(kv.id)),
             })
@@ -1419,6 +1579,19 @@ fn runtime_cancel_action() -> pb::AgentClientMessage {
             pb::ConversationAction {
                 action: Some(pb::conversation_action::Action::CancelAction(
                     pb::CancelAction::default(),
+                )),
+                ..Default::default()
+            },
+        )),
+    }
+}
+
+fn runtime_unsupported_action() -> pb::AgentClientMessage {
+    pb::AgentClientMessage {
+        message: Some(pb::agent_client_message::Message::ConversationAction(
+            pb::ConversationAction {
+                action: Some(pb::conversation_action::Action::ResumeAction(
+                    pb::ResumeAction::default(),
                 )),
                 ..Default::default()
             },

@@ -1,3 +1,4 @@
+//! Routes model requests to the configured provider.
 use std::{sync::Arc, time::Duration};
 
 use async_stream::try_stream;
@@ -67,6 +68,7 @@ impl Provider for ProviderRouter {
                 tool_count: invocation.request.prompt.tools.len(),
                 detailed: false,
             }).await?;
+            let _cancel_on_drop = recorder.cancel_on_drop();
             let config = ProviderConfig {
                 kind: match provider_type {
                     ProviderType::OpenAiChat => ProviderKind::OpenAiChat,
