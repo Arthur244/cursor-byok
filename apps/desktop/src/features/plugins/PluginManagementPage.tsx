@@ -277,11 +277,19 @@ function RuntimeProgressModal({ open, status, starting, onClose }: { open: boole
     <div className={styles.progressContent} aria-live="polite">
       <strong>{stage}</strong>
       {status?.phase === "downloading" && <>
-        <progress
+        <div
+          className={styles.progressBar}
+          role="progressbar"
           aria-label={t("下载进度")}
-          value={percent ?? undefined}
-          max={100}
-        />
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={percent ?? undefined}
+        >
+          <div
+            className={styles.progressFill}
+            style={{ width: `${percent ?? 100}%` }}
+          />
+        </div>
         <span>
           {total ? t("已下载 {downloaded} / {total}", { downloaded: formatBytes(downloaded), total: formatBytes(total) }) : t("已下载 {downloaded}", { downloaded: formatBytes(downloaded) })}
         </span>
