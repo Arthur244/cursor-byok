@@ -213,6 +213,7 @@
   "8d0c47eb9eac2d34": "Call type",
   "8df48894086d6fbd": "Reason (optional)",
   "8e2d04638a11a7cb": "Only determines the request and response format; it does not change the request URL.",
+  "8f6f8d979c981ced": "Copied",
   "8f9b0d6cc477d334": "Choose how Cursor connects to TAB endpoints.",
   "90800c48a1dd0655": "{label} must be a JSON object",
   "919cb0ce0c8db4e7": "Leave blank to keep the current password",

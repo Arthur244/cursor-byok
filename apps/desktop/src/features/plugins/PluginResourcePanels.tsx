@@ -56,7 +56,14 @@ function OAuthMethodCard({ pluginId, resourceType, method, onConfigured }: {
   const [status, setStatus] = useState<"idle" | "starting" | "polling" | "success" | "error">("idle");
   const [begun, setBegun] = useState<PluginOAuthBegin | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const stopped = useRef(false);
+
+  const copyCode = async (code: string) => {
+    await api.copyCursorText(code).catch(() => undefined);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  };
 
   useEffect(() => () => { stopped.current = true; }, []);
 
@@ -115,7 +122,10 @@ function OAuthMethodCard({ pluginId, resourceType, method, onConfigured }: {
     {method.description && <span>{pluginText(method.description, locale)}</span>}
     {begun && status === "polling" && <div className={styles.deviceCode}>
       <small>{t("设备验证码")}</small>
-      <button type="button" onClick={() => void api.copyCursorText(begun.userCode)}>{begun.userCode}</button>
+      <button type="button" onClick={() => void copyCode(begun.userCode)}>{begun.userCode}</button>
+      <button type="button" className={styles.copy} onClick={() => void copyCode(begun.userCode)}>
+        {copied ? t("已复制") : t("复制")}
+      </button>
     </div>}
     <div className={styles.actions}>
       <Button variant="primary" disabled={status === "starting" || status === "polling"} onClick={() => void start()}>

@@ -47,7 +47,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 186,
+          "line": 196,
           "column": 39
         }
       ]
@@ -78,7 +78,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 233,
+          "line": 243,
           "column": 16
         }
       ]
@@ -107,12 +107,12 @@
         {
           "file": "features/models/CursorModelCards.tsx",
           "line": 151,
-          "column": 66
+          "column": 64
         },
         {
           "file": "features/models/CursorModelCards.tsx",
           "line": 265,
-          "column": 85
+          "column": 70
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
@@ -165,7 +165,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 259,
+          "line": 310,
           "column": 21
         }
       ]
@@ -225,8 +225,8 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 183,
-          "column": 14
+          "line": 187,
+          "column": 12
         }
       ]
     },
@@ -289,7 +289,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 186,
+          "line": 196,
           "column": 93
         }
       ]
@@ -650,7 +650,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 117,
+          "line": 124,
           "column": 15
         }
       ]
@@ -878,7 +878,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 243,
+          "line": 294,
           "column": 122
         }
       ]
@@ -969,7 +969,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 122,
+          "line": 132,
           "column": 73
         }
       ]
@@ -996,7 +996,7 @@
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 231,
+          "line": 274,
           "column": 70
         },
         {
@@ -1168,12 +1168,12 @@
         {
           "file": "features/models/CursorModelCards.tsx",
           "line": 153,
-          "column": 100
+          "column": 96
         },
         {
           "file": "features/models/CursorModelCards.tsx",
           "line": 267,
-          "column": 119
+          "column": 102
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
@@ -1182,7 +1182,7 @@
         },
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 261,
+          "line": 271,
           "column": 68
         }
       ]
@@ -1194,7 +1194,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 271,
+          "line": 281,
           "column": 81
         }
       ]
@@ -1206,12 +1206,12 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 218,
+          "line": 228,
           "column": 32
         },
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 218,
+          "line": 228,
           "column": 56
         }
       ]
@@ -1223,7 +1223,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 126,
+          "line": 136,
           "column": 64
         }
       ]
@@ -1325,8 +1325,8 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 190,
-          "column": 16
+          "line": 213,
+          "column": 22
         }
       ]
     },
@@ -1522,7 +1522,7 @@
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 231,
+          "line": 274,
           "column": 80
         }
       ]
@@ -1668,7 +1668,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 122,
+          "line": 132,
           "column": 92
         }
       ]
@@ -1772,17 +1772,17 @@
         {
           "file": "features/models/CursorModelCards.tsx",
           "line": 150,
-          "column": 88
+          "column": 86
         },
         {
           "file": "features/models/CursorModelCards.tsx",
           "line": 173,
-          "column": 88
+          "column": 86
         },
         {
           "file": "features/models/CursorModelCards.tsx",
           "line": 264,
-          "column": 107
+          "column": 92
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
@@ -1798,7 +1798,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 230,
+          "line": 273,
           "column": 12
         }
       ]
@@ -1863,7 +1863,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 273,
+          "line": 283,
           "column": 42
         }
       ]
@@ -2164,7 +2164,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 223,
+          "line": 266,
           "column": 7
         }
       ]
@@ -2315,12 +2315,17 @@
         {
           "file": "features/models/CursorModelCards.tsx",
           "line": 152,
-          "column": 71
+          "column": 64
         },
         {
           "file": "features/models/CursorModelCards.tsx",
           "line": 266,
-          "column": 90
+          "column": 70
+        },
+        {
+          "file": "features/plugins/PluginResourcePanels.tsx",
+          "line": 127,
+          "column": 30
         }
       ]
     },
@@ -2331,7 +2336,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 485,
+          "line": 486,
           "column": 43
         }
       ]
@@ -2495,17 +2500,17 @@
         {
           "file": "features/models/CursorModelCards.tsx",
           "line": 150,
-          "column": 100
+          "column": 98
         },
         {
           "file": "features/models/CursorModelCards.tsx",
           "line": 173,
-          "column": 100
+          "column": 98
         },
         {
           "file": "features/models/CursorModelCards.tsx",
           "line": 264,
-          "column": 119
+          "column": 104
         }
       ]
     },
@@ -2658,7 +2663,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 480,
+          "line": 481,
           "column": 43
         }
       ]
@@ -2694,7 +2699,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 258,
+          "line": 309,
           "column": 31
         }
       ]
@@ -2788,7 +2793,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 254,
+          "line": 264,
           "column": 13
         }
       ]
@@ -2800,8 +2805,8 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 179,
-          "column": 34
+          "line": 182,
+          "column": 36
         }
       ]
     },
@@ -2812,7 +2817,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 417,
+          "line": 418,
           "column": 21
         }
       ]
@@ -2854,7 +2859,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 243,
+          "line": 294,
           "column": 20
         }
       ]
@@ -2919,7 +2924,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 192,
+          "line": 202,
           "column": 31
         }
       ]
@@ -2970,7 +2975,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 255,
+          "line": 306,
           "column": 32
         }
       ]
@@ -2994,7 +2999,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 234,
+          "line": 244,
           "column": 110
         },
         {
@@ -3086,6 +3091,18 @@
         }
       ]
     },
+    "8f6f8d979c981ced": {
+      "source": "已复制",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginResourcePanels.tsx",
+          "line": 127,
+          "column": 19
+        }
+      ]
+    },
     "8f9b0d6cc477d334": {
       "source": "控制 Cursor TAB 相关接口的连接方式。",
       "kind": "text",
@@ -3143,8 +3160,8 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 187,
-          "column": 88
+          "line": 200,
+          "column": 18
         }
       ]
     },
@@ -3179,7 +3196,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 257,
+          "line": 308,
           "column": 31
         }
       ]
@@ -3203,7 +3220,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 192,
+          "line": 202,
           "column": 18
         }
       ]
@@ -3275,7 +3292,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 124,
+          "line": 134,
           "column": 147
         }
       ]
@@ -3319,7 +3336,7 @@
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 225,
+          "line": 268,
           "column": 9
         }
       ]
@@ -3381,7 +3398,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 256,
+          "line": 307,
           "column": 30
         }
       ]
@@ -3400,7 +3417,7 @@
         },
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 79,
+          "line": 86,
           "column": 22
         }
       ]
@@ -3837,7 +3854,7 @@
         },
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 260,
+          "line": 270,
           "column": 84
         },
         {
@@ -3893,7 +3910,7 @@
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 246,
+          "line": 297,
           "column": 70
         }
       ]
@@ -4102,7 +4119,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 268,
+          "line": 278,
           "column": 81
         }
       ]
@@ -4208,7 +4225,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 231,
+          "line": 274,
           "column": 45
         }
       ]
@@ -4263,7 +4280,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 229,
+          "line": 239,
           "column": 66
         }
       ]
@@ -4328,7 +4345,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 232,
+          "line": 242,
           "column": 102
         },
         {
@@ -4492,8 +4509,8 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 200,
-          "column": 20
+          "line": 229,
+          "column": 32
         }
       ]
     },
@@ -4569,7 +4586,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 188,
+          "line": 198,
           "column": 32
         }
       ]
@@ -4617,7 +4634,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 247,
+          "line": 298,
           "column": 44
         }
       ]
@@ -4740,8 +4757,8 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 179,
-          "column": 23
+          "line": 182,
+          "column": 25
         }
       ]
     },
@@ -4777,7 +4794,7 @@
         {
           "file": "features/models/CursorModelCards.tsx",
           "line": 174,
-          "column": 70
+          "column": 64
         },
         {
           "file": "features/settings/SettingsPage.tsx",
@@ -4925,7 +4942,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 122,
+          "line": 132,
           "column": 34
         }
       ]
@@ -4937,7 +4954,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 87,
+          "line": 94,
           "column": 36
         }
       ]
@@ -5040,7 +5057,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 188,
+          "line": 198,
           "column": 43
         }
       ]
@@ -5158,8 +5175,8 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 188,
-          "column": 90
+          "line": 206,
+          "column": 20
         }
       ]
     },
@@ -5286,8 +5303,8 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 194,
-          "column": 32
+          "line": 219,
+          "column": 44
         }
       ]
     },
@@ -5403,7 +5420,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 238,
+          "line": 283,
           "column": 23
         }
       ]
@@ -5449,7 +5466,7 @@
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 254,
+          "line": 305,
           "column": 29
         }
       ]
@@ -5505,8 +5522,8 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 194,
-          "column": 45
+          "line": 219,
+          "column": 57
         }
       ]
     },

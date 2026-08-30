@@ -207,7 +207,13 @@ impl PluginWorker {
     async fn stdin(&self) -> Result<Arc<Mutex<ChildStdin>>> {
         let mut process = self.inner.process.lock().await;
         let dead = match process.as_mut() {
-            Some(current) => current.child.try_wait()?.is_some(),
+            Some(current) => current
+                .child
+                .try_wait()
+                .map_err(|error| {
+                    Error::Config(format!("cannot check plugin worker status: {error}"))
+                })?
+                .is_some(),
             None => true,
         };
         if dead {
@@ -368,8 +374,14 @@ async fn write_message(stdin: &Arc<Mutex<ChildStdin>>, message: &HostMessage<'_>
     let mut bytes = serde_json::to_vec(message)?;
     bytes.push(b'\n');
     let mut stdin = stdin.lock().await;
-    stdin.write_all(&bytes).await?;
-    stdin.flush().await?;
+    stdin
+        .write_all(&bytes)
+        .await
+        .map_err(|error| Error::Config(format!("cannot write to plugin worker: {error}")))?;
+    stdin
+        .flush()
+        .await
+        .map_err(|error| Error::Config(format!("cannot flush plugin worker stdin: {error}")))?;
     Ok(())
 }
 

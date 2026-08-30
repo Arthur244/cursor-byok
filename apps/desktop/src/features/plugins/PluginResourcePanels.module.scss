@@ -46,6 +46,20 @@
     letter-spacing: 0.08em;
     cursor: pointer;
   }
+
+  button.copy {
+    padding: 6px 2px;
+    color: var(--vscode-textLink-foreground);
+    background: none;
+    border: none;
+    font-family: inherit;
+    letter-spacing: normal;
+    font-size: type.$font-size-xs;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
 }
 
 .fileButton {
