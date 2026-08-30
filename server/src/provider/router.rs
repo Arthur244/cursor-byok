@@ -20,13 +20,15 @@ use super::{
 pub struct ProviderRouter {
     store: Store,
     request_timeout: Duration,
+    stream_idle_timeout: Duration,
 }
 
 impl ProviderRouter {
-    pub fn new(store: Store, request_timeout: Duration) -> Self {
+    pub fn new(store: Store, request_timeout: Duration, stream_idle_timeout: Duration) -> Self {
         Self {
             store,
             request_timeout,
+            stream_idle_timeout,
         }
     }
 }
@@ -39,6 +41,7 @@ impl Provider for ProviderRouter {
     ) -> ProviderStream {
         let store = self.store.clone();
         let request_timeout = self.request_timeout;
+        let stream_idle_timeout = self.stream_idle_timeout;
         Box::pin(try_stream! {
             let selected = invocation.request.model.model_id.clone();
             let model = store
@@ -96,12 +99,29 @@ impl Provider for ProviderRouter {
             tracing::debug!(
                 model = %selected,
                 provider_type = ?provider_type,
-                timeout_ms = config.request_timeout.as_millis() as u64,
+                request_timeout_ms = config.request_timeout.as_millis() as u64,
+                stream_idle_timeout_ms = stream_idle_timeout.as_millis() as u64,
                 "provider stream created"
             );
             let mut last_event_time = std::time::Instant::now();
             let mut event_count: u64 = 0;
-            while let Some(event) = stream.next().await {
+            loop {
+                let event = match next_provider_event(&mut stream, stream_idle_timeout).await {
+                    Ok(Some(event)) => event,
+                    Ok(None) => break,
+                    Err(_) => {
+                        let elapsed_ms = stream_started.elapsed().as_millis() as u64;
+                        let error = stream_idle_timeout_error(stream_idle_timeout);
+                        tracing::warn!(
+                            error = %error,
+                            elapsed_ms,
+                            event_count,
+                            idle_timeout_ms = stream_idle_timeout.as_millis() as u64,
+                            "provider stream idle timeout"
+                        );
+                        Err(error)
+                    }
+                };
                 let now = std::time::Instant::now();
                 let gap_ms = now.duration_since(last_event_time).as_millis() as u64;
                 let elapsed_ms = now.duration_since(stream_started).as_millis() as u64;
@@ -137,6 +157,7 @@ impl Provider for ProviderRouter {
                         yield event;
                     }
                     Err(error) => {
+                        let error = normalize_provider_stream_error(error, request_timeout);
                         tracing::debug!(
                             error = %error,
                             elapsed_ms,
@@ -167,6 +188,48 @@ impl Provider for ProviderRouter {
             }
         })
     }
+}
+
+async fn next_provider_event(
+    stream: &mut ProviderStream,
+    idle_timeout: Duration,
+) -> std::result::Result<Option<Result<super::ModelEvent>>, tokio::time::error::Elapsed> {
+    tokio::time::timeout(idle_timeout, stream.next()).await
+}
+
+fn stream_idle_timeout_error(idle_timeout: Duration) -> Error {
+    Error::Provider(format!(
+        "provider stream idle timeout: no events received for {} seconds ({} minutes)",
+        idle_timeout.as_secs(),
+        idle_timeout.as_secs() / 60
+    ))
+}
+
+fn request_timeout_error(request_timeout: Duration) -> Error {
+    Error::Provider(format!(
+        "provider request timed out after {} seconds ({} minutes)",
+        request_timeout.as_secs(),
+        request_timeout.as_secs() / 60
+    ))
+}
+
+fn normalize_provider_stream_error(error: Error, request_timeout: Duration) -> Error {
+    match error {
+        Error::Http(source) if source.is_timeout() => request_timeout_error(request_timeout),
+        Error::Http(source) if source.is_body() => Error::Provider(format!(
+            "provider stream transport failed while reading the response body: {}",
+            root_error_message(&source)
+        )),
+        error => error,
+    }
+}
+
+fn root_error_message(error: &(dyn std::error::Error + 'static)) -> String {
+    let mut current = error;
+    while let Some(source) = current.source() {
+        current = source;
+    }
+    current.to_string()
 }
 
 fn custom_headers(value: &serde_json::Value) -> Result<reqwest::header::HeaderMap> {
@@ -222,4 +285,37 @@ fn build_inner(
         }
     };
     Ok(Arc::new(NormalizedProvider::new(provider)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn pending_provider_event_hits_the_idle_timeout() {
+        let mut stream: ProviderStream = Box::pin(futures_util::stream::pending());
+
+        let result = next_provider_event(&mut stream, Duration::from_millis(1)).await;
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn timeout_errors_state_the_boundary_and_duration() {
+        let Error::Provider(idle) = stream_idle_timeout_error(Duration::from_secs(30 * 60)) else {
+            panic!("idle timeout must be a provider error");
+        };
+        assert_eq!(
+            idle,
+            "provider stream idle timeout: no events received for 1800 seconds (30 minutes)"
+        );
+
+        let Error::Provider(request) = request_timeout_error(Duration::from_secs(60 * 60)) else {
+            panic!("request timeout must be a provider error");
+        };
+        assert_eq!(
+            request,
+            "provider request timed out after 3600 seconds (60 minutes)"
+        );
+    }
 }

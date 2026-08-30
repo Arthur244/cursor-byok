@@ -40,6 +40,7 @@ impl App {
         let provider = std::sync::Arc::new(ProviderRouter::new(
             store.clone(),
             config.provider_request_timeout,
+            config.provider_stream_idle_timeout,
         ));
         let registry = TransportRegistry::with_web_cache(
             store.clone(),

@@ -32,6 +32,123 @@ pub trait Provider: Send + Sync {
     ) -> ProviderStream;
 }
 
+fn map_sse_error(
+    label: &str,
+    error: eventsource_stream::EventStreamError<crate::Error>,
+) -> crate::Error {
+    match error {
+        eventsource_stream::EventStreamError::Transport(error) => error,
+        eventsource_stream::EventStreamError::Utf8(error) => {
+            crate::Error::Provider(format!("{label} SSE UTF-8 error: {error}"))
+        }
+        eventsource_stream::EventStreamError::Parser(error) => {
+            crate::Error::Provider(format!("{label} SSE parse error: {error}"))
+        }
+    }
+}
+
+fn provider_event_error(label: &str, value: &serde_json::Value) -> Option<crate::Error> {
+    let kind = value.get("type").and_then(serde_json::Value::as_str);
+    let direct_error = value.get("error").filter(|error| !error.is_null());
+    if !matches!(kind, Some("error" | "response.failed")) && direct_error.is_none() {
+        return None;
+    }
+
+    let message = value
+        .get("message")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| {
+            value
+                .pointer("/error/message")
+                .and_then(serde_json::Value::as_str)
+        })
+        .or_else(|| {
+            value
+                .pointer("/response/error/message")
+                .and_then(serde_json::Value::as_str)
+        })
+        .or_else(|| direct_error.and_then(serde_json::Value::as_str))
+        .or_else(|| {
+            value
+                .pointer("/response/error")
+                .and_then(serde_json::Value::as_str)
+        })
+        .unwrap_or("provider returned an error event without a message");
+
+    Some(crate::Error::Provider(format!("{label} error: {message}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sse_transport_errors_are_not_relabelled_as_parse_errors() {
+        let error = map_sse_error(
+            "test provider",
+            eventsource_stream::EventStreamError::Transport(crate::Error::Provider(
+                "connection closed".into(),
+            )),
+        );
+
+        let crate::Error::Provider(message) = error else {
+            panic!("transport error category must be preserved");
+        };
+        assert_eq!(message, "connection closed");
+    }
+
+    #[test]
+    fn provider_error_events_extract_flat_and_nested_messages() {
+        assert_provider_error(
+            "OpenAI Responses",
+            serde_json::json!({
+                "type": "error",
+                "message": "Internal error during token generation"
+            }),
+            "OpenAI Responses error: Internal error during token generation",
+        );
+        assert_provider_error(
+            "OpenAI Chat",
+            serde_json::json!({
+                "error": {"message": "quota exceeded", "type": "server_error"}
+            }),
+            "OpenAI Chat error: quota exceeded",
+        );
+        assert_provider_error(
+            "Anthropic",
+            serde_json::json!({
+                "type": "error",
+                "error": {"type": "overloaded_error", "message": "Overloaded"}
+            }),
+            "Anthropic error: Overloaded",
+        );
+        assert_provider_error(
+            "OpenAI Responses",
+            serde_json::json!({
+                "type": "response.failed",
+                "response": {"error": {"message": "generation failed"}}
+            }),
+            "OpenAI Responses error: generation failed",
+        );
+    }
+
+    #[test]
+    fn successful_provider_events_are_not_errors() {
+        assert!(provider_event_error(
+            "OpenAI Responses",
+            &serde_json::json!({"type": "response.completed", "error": null})
+        )
+        .is_none());
+    }
+
+    fn assert_provider_error(label: &str, value: serde_json::Value, expected: &str) {
+        let Some(crate::Error::Provider(message)) = provider_event_error(label, &value) else {
+            panic!("expected provider error");
+        };
+        assert_eq!(message, expected);
+    }
+}
+
 fn merge_extra_params(body: &mut serde_json::Value, extra: &serde_json::Value) -> Result<()> {
     let extra = extra
         .as_object()

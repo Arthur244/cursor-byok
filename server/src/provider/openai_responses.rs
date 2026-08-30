@@ -14,7 +14,7 @@ use crate::{
 };
 
 use super::{
-    apply_openai_prompt_cache_key, merge_extra_params,
+    apply_openai_prompt_cache_key, map_sse_error, merge_extra_params, provider_event_error,
     recorder::recorded_headers,
     retry::{send_with_retry, Attempt, RetryPolicy},
     CallRecorder, FinishReason, ModelEvent, Provider, ProviderStream,
@@ -126,9 +126,12 @@ impl Provider for OpenAiResponsesProvider {
                     event = source.next() => event,
                 };
                 let Some(event) = event else { break };
-                let event = event.map_err(|error| Error::Provider(format!("OpenAI Responses SSE: {error}")))?;
+                let event = event.map_err(|error| map_sse_error("OpenAI Responses", error))?;
                 if event.data == "[DONE]" { break; }
                 let value: Value = serde_json::from_str(&event.data)?;
+                if let Some(error) = provider_event_error("OpenAI Responses", &value) {
+                    Err(error)?;
+                }
                 let kind = value.get("type").and_then(Value::as_str).unwrap_or(&event.event);
                 match kind {
                     "response.output_text.delta" => {
@@ -247,7 +250,6 @@ impl Provider for OpenAiResponsesProvider {
                         terminal = true;
                         yield ModelEvent::Done(FinishReason::Length);
                     }
-                    "response.failed" => Err(Error::Provider(format!("OpenAI Responses failed: {}", event.data)))?,
                     _ => {}
                 }
             }
