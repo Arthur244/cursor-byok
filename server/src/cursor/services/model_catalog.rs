@@ -10,7 +10,7 @@ use prost::Message;
 use crate::{
     api::cursor::proxy::{self, CursorProxy},
     cursor::{protocol::proto::agent::v1 as agent, transport::TransportRegistry},
-    model::{format_token_count, parse_token_count, ModelConfig, ModelType},
+    model::{format_token_count, parse_token_count, ModelConfig},
     plugin::PluginModelDescriptor,
     Error, Result,
 };
@@ -378,14 +378,23 @@ fn available_model(model: &ModelConfig) -> AvailableModel {
             display_name: "Cursor".into(),
         }),
         model_picker_badges: vec![ModelPickerBadge {
-            label: match model.model_type {
-                ModelType::OpenAi => "OpenAI".into(),
-                ModelType::Anthropic => "Anthropic".into(),
-            },
+            label: model
+                .group_name
+                .clone()
+                .unwrap_or_else(|| provider_host(&model.base_url)),
             variant: 1,
             dismiss_on_selection: false,
         }],
     }
+}
+
+/// 徽章回退标签:base_url 的主机名。入库时已校验为带主机的 HTTP(S) URL,
+/// 解析失败仅是理论分支,此时原样返回 base_url。
+fn provider_host(base_url: &str) -> String {
+    reqwest::Url::parse(base_url.trim())
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_lowercase))
+        .unwrap_or_else(|| base_url.trim().into())
 }
 
 fn model_parameters(
@@ -611,7 +620,7 @@ fn available_plugin_model(model: &PluginModelDescriptor) -> AvailableModel {
             display_name: model.provider_type.clone(),
         }),
         model_picker_badges: vec![ModelPickerBadge {
-            label: model.provider_type.clone(),
+            label: model.plugin_name.clone(),
             variant: 1,
             dismiss_on_selection: false,
         }],

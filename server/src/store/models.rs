@@ -11,7 +11,7 @@ use crate::{
 use super::{now_ms, Store};
 
 const MODEL_COLUMNS: &str = r#"
-    model_hash, sort_order, display_name, model_type, base_url, use_full_url, api_key, tooltip_data,
+    model_hash, sort_order, display_name, group_name, model_type, base_url, use_full_url, api_key, tooltip_data,
     model_id, reasoning_effort, openai_endpoint, openai_extra_params_enabled,
     openai_extra_params_json, custom_headers_enabled, custom_headers_json,
     anthropic_extra_params_enabled, anthropic_extra_params_json, context_window_tokens,
@@ -123,7 +123,7 @@ impl Store {
         }
         let result = sqlx::query(
             r#"UPDATE model_configs SET
-                model_hash = ?, sort_order = ?, display_name = ?, model_type = ?, base_url = ?,
+                model_hash = ?, sort_order = ?, display_name = ?, group_name = ?, model_type = ?, base_url = ?,
                 use_full_url = ?, api_key = ?, tooltip_data = ?, model_id = ?, reasoning_effort = ?,
                 openai_endpoint = ?, openai_extra_params_enabled = ?, openai_extra_params_json = ?,
                 custom_headers_enabled = ?, custom_headers_json = ?,
@@ -135,6 +135,7 @@ impl Store {
         .bind(&next_hash)
         .bind(input.sort_order)
         .bind(&input.display_name)
+        .bind(&input.group_name)
         .bind(input.model_type.as_str())
         .bind(&input.base_url)
         .bind(input.use_full_url)
@@ -242,13 +243,13 @@ async fn insert_model_with_conflict(
 ) -> Result<bool> {
     let mut statement = String::from(
         r#"INSERT INTO model_configs(
-            model_hash, sort_order, display_name, model_type, base_url, use_full_url, api_key, tooltip_data,
+            model_hash, sort_order, display_name, group_name, model_type, base_url, use_full_url, api_key, tooltip_data,
             model_id, reasoning_effort, openai_endpoint, openai_extra_params_enabled,
             openai_extra_params_json, custom_headers_enabled, custom_headers_json,
             anthropic_extra_params_enabled, anthropic_extra_params_json, context_window_tokens,
             max_completion_tokens, anthropic_max_tokens, anthropic_thinking_effort,
             thinking_budget_tokens, created_at_ms, updated_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
     );
     if ignore_existing {
         statement.push_str(" ON CONFLICT(model_hash) DO NOTHING");
@@ -257,6 +258,7 @@ async fn insert_model_with_conflict(
         .bind(hash)
         .bind(input.sort_order)
         .bind(&input.display_name)
+        .bind(&input.group_name)
         .bind(input.model_type.as_str())
         .bind(&input.base_url)
         .bind(input.use_full_url)
@@ -288,6 +290,7 @@ fn model_from_row(row: sqlx::sqlite::SqliteRow) -> Result<ModelConfig> {
         model_hash: row.try_get("model_hash")?,
         sort_order: row.try_get("sort_order")?,
         display_name: row.try_get("display_name")?,
+        group_name: row.try_get("group_name")?,
         model_type: ModelType::from_str(row.try_get("model_type")?)?,
         base_url: row.try_get("base_url")?,
         use_full_url: row.try_get("use_full_url")?,
@@ -318,6 +321,71 @@ fn model_from_row(row: sqlx::sqlite::SqliteRow) -> Result<ModelConfig> {
         created_at_ms: row.try_get("created_at_ms")?,
         updated_at_ms: row.try_get("updated_at_ms")?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn model_input(group_name: Option<&str>) -> ModelConfigInput {
+        ModelConfigInput {
+            sort_order: 0,
+            display_name: "Test Model".into(),
+            group_name: group_name.map(String::from),
+            model_type: ModelType::OpenAi,
+            base_url: "https://example.com/v1/chat/completions".into(),
+            use_full_url: true,
+            api_key: "test-key".into(),
+            tooltip_data: "Test Model".into(),
+            model_id: "test-model".into(),
+            reasoning_effort: None,
+            openai_endpoint: crate::model::OPENAI_CHAT_ENDPOINT.into(),
+            openai_extra_params_enabled: false,
+            openai_extra_params: serde_json::json!({}),
+            custom_headers_enabled: false,
+            custom_headers: serde_json::json!({}),
+            anthropic_extra_params_enabled: false,
+            anthropic_extra_params: serde_json::json!({}),
+            context_window_tokens: None,
+            max_completion_tokens: None,
+            anthropic_max_tokens: None,
+            anthropic_thinking_effort: None,
+            thinking_budget_tokens: None,
+        }
+    }
+
+    /// 分组名是纯展示字段:入库时去除首尾空白、空串归一为 NULL,
+    /// 更新分组名不得改变模型身份哈希。
+    #[tokio::test]
+    async fn group_name_round_trips_without_changing_model_identity() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+
+        let created = store
+            .create_model(&model_input(Some("  My Group  ")))
+            .await
+            .unwrap();
+        assert_eq!(created.group_name.as_deref(), Some("My Group"));
+
+        let renamed = store
+            .update_model(&created.model_hash, &model_input(Some("Renamed")))
+            .await
+            .unwrap();
+        assert_eq!(renamed.model_hash, created.model_hash);
+        assert_eq!(renamed.group_name.as_deref(), Some("Renamed"));
+
+        let cleared = store
+            .update_model(&created.model_hash, &model_input(Some("   ")))
+            .await
+            .unwrap();
+        assert_eq!(cleared.model_hash, created.model_hash);
+        assert_eq!(cleared.group_name, None);
+    }
 }
 
 fn optional_u64(row: &sqlx::sqlite::SqliteRow, column: &str) -> Result<Option<u64>> {

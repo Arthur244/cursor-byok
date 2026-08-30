@@ -2,13 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, configuredPluginModels, type Model, type ModelInput } from "../../shared/api";
 import { CursorCaGate, CursorCaProvider, CursorModelGate, CursorModelProvider } from "./CursorGates";
-import { CursorModelCards, cursorModelGroups, type CursorModelGrouping } from "./CursorModelCards";
+import { CursorModelCards, cursorModelGroups, type CursorModelGroup, type CursorModelGrouping } from "./CursorModelCards";
 import { CursorModelEditor, emptyCursorModelDraft, type CursorModelDraft } from "./CursorModelEditor";
 import { CursorModelTestResult, type CursorModelTestState } from "./CursorModelTestResult";
 import styles from "./CursorSettings.module.scss";
 import { PageContent } from "../../shell/layout/PageContent";
 import { LegacyModelImport } from "./LegacyModelImport";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
+import { FormField, SecretTextInput, TextInput } from "../../shared/ui/FormControls";
 import controls from "../../shared/ui/Controls.module.scss";
 import { Icon } from "../../shared/ui/Icon";
 import { Modal } from "../../shared/ui/Modal";
@@ -34,6 +35,11 @@ export function CursorSettingsPage() {
   const [savingAndTesting, setSavingAndTesting] = useState(false);
   const [batchTesting, setBatchTesting] = useState(false);
   const [grouping, setGrouping] = useState<CursorModelGrouping>("flat");
+  const [settingsGroup, setSettingsGroup] = useState<CursorModelGroup | null>(null);
+  const [groupNameDraft, setGroupNameDraft] = useState("");
+  const [groupBaseUrlDraft, setGroupBaseUrlDraft] = useState("");
+  const [groupApiKeyDraft, setGroupApiKeyDraft] = useState("");
+  const [groupSettingsBusy, setGroupSettingsBusy] = useState(false);
   const activeModelTests = useRef(new Map<string, { testId: string; controller: AbortController; cancelling: boolean }>());
   const caReady = cursorHarness?.ca === "ready";
   const pluginModels = configuredPluginModels(plugins);
@@ -208,6 +214,39 @@ export function CursorSettingsPage() {
     }]);
     if (created) message(t("模型已复制"));
   };
+  const openGroupSettings = (group: CursorModelGroup) => {
+    setGroupNameDraft(group.models.find((model) => model.group_name?.trim())?.group_name?.trim() ?? "");
+    setGroupBaseUrlDraft(sharedValue(group.models.map((model) => model.base_url)) ?? "");
+    setGroupApiKeyDraft(sharedValue(group.models.map((model) => model.api_key)) ?? "");
+    setSettingsGroup(group);
+  };
+  const saveGroupSettings = async () => {
+    if (!settingsGroup) return;
+    const group_name = groupNameDraft.trim() || null;
+    const base_url = groupBaseUrlDraft.trim();
+    const api_key = groupApiKeyDraft.trim();
+    setGroupSettingsBusy(true);
+    try {
+      for (const model of settingsGroup.models) {
+        const input: ModelInput = {
+          ...modelInput(model),
+          group_name,
+          ...(base_url ? { base_url } : {}),
+          ...(api_key ? { api_key } : {}),
+        };
+        if (input.group_name === (model.group_name ?? null)
+          && input.base_url === model.base_url
+          && input.api_key === model.api_key) continue;
+        await api.updateModel(model.model_hash, input);
+      }
+      await appStore.refresh();
+      setSettingsGroup(null);
+    } catch (cause) {
+      message(errorText(cause));
+    } finally {
+      setGroupSettingsBusy(false);
+    }
+  };
   const reorderModels = useCallback(async (modelHashes: string[]) => {
     if (!await appStore.reorderCursorModels(modelHashes)) {
       message(appStore.getSnapshot().error || t("排序失败"));
@@ -228,6 +267,7 @@ export function CursorSettingsPage() {
     onTestPluginModel={(model) => void testModel({ model_hash: model.id, display_name: model.displayName })}
     onPluginSettings={() => navigate("/plugins")}
     onReorder={reorderModels}
+    onGroupSettings={openGroupSettings}
   />;
 
   const refreshCa = async () => {
@@ -274,6 +314,19 @@ export function CursorSettingsPage() {
     <ConfirmDialog open={caCommand !== null} title={t("安装本地 CA")} cancelLabel={t("关闭")} confirmLabel={t("打开终端")} onCancel={() => setCaCommand(null)} onConfirm={openCaTerminal}>
       <div className={styles.editor}><strong>{t("需要授权安装证书")}</strong><span>{t("安装命令已自动复制。点击“打开终端”，将命令粘贴到终端中执行，并按提示输入密码。")}</span><pre className={styles.command}>{caCommand}</pre></div>
     </ConfirmDialog>
+    <Modal open={settingsGroup !== null} title={t("分组设置")} busy={groupSettingsBusy || cursorBusy} onClose={() => setSettingsGroup(null)} onSubmit={() => void saveGroupSettings()} submitLabel={t("保存")}>
+      {settingsGroup && <div className={styles.editor}>
+        <FormField label={t("分组名称")} hint={t("应用于该分组下的全部模型，并作为 Cursor 模型选择器中的徽章标签；清空则恢复显示服务器域名。")}>
+          <TextInput placeholder={settingsGroup.key} value={groupNameDraft} onChange={(event) => setGroupNameDraft(event.target.value)} />
+        </FormField>
+        <FormField label={t("服务器地址")} hint={t("修改后应用于该分组下的全部模型；留空保持各模型现有配置不变。")}>
+          <TextInput placeholder={t("留空保持不变")} value={groupBaseUrlDraft} onChange={(event) => setGroupBaseUrlDraft(event.target.value)} />
+        </FormField>
+        <FormField label="API Key" hint={t("修改后应用于该分组下的全部模型；留空保持各模型现有配置不变。")}>
+          <SecretTextInput placeholder={t("留空保持不变")} autoComplete="off" value={groupApiKeyDraft} onChange={(event) => setGroupApiKeyDraft(event.target.value)} />
+        </FormField>
+      </div>}
+    </Modal>
     <ConfirmDialog open={deleting !== null} title={t("删除模型")} cancelLabel={t("取消")} confirmLabel={t("删除")} onCancel={() => setDeleting(null)} onConfirm={() => { if (deleting) void appStore.deleteModel(deleting.model_hash); setDeleting(null); }}><p>{t("确定删除这个模型吗？")}</p></ConfirmDialog>
   </>;
 }
@@ -281,6 +334,13 @@ export function CursorSettingsPage() {
 function modelInput(model: Model): ModelInput {
   const { model_hash: _hash, created_at_ms: _created, updated_at_ms: _updated, ...input } = model;
   return input;
+}
+
+/** 组内所有模型取值一致时返回该值,否则返回 null(表单留空表示保持不变)。 */
+function sharedValue(values: string[]): string | null {
+  const [first, ...rest] = values;
+  if (first === undefined) return null;
+  return rest.every((value) => value === first) ? first : null;
 }
 
 function draftInput(draft: CursorModelDraft): ModelInput {

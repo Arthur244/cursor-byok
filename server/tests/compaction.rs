@@ -27,6 +27,7 @@ async fn summarize_replaces_model_history_and_preserves_cursor_history() {
         .create_model(&ModelConfigInput {
             sort_order: 0,
             display_name: "Test Model".into(),
+            group_name: None,
             model_type: ModelType::OpenAi,
             base_url: "https://example.com/v1/chat/completions".into(),
             use_full_url: true,

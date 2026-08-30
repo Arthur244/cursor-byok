@@ -56,6 +56,7 @@ impl App {
             compiler,
             WebCache::managed()?,
             plugins.clone(),
+            crate::config::managed_data_dir()?.join("rules"),
         );
         let control =
             control::ControlService::new(store.clone(), provider, plugin_runtime, plugins)?;

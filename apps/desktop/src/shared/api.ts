@@ -7,6 +7,7 @@ export interface Model {
   model_hash: string;
   sort_order: number;
   display_name: string;
+  group_name: string | null;
   type: ModelType;
   base_url: string;
   use_full_url: boolean;
@@ -33,6 +34,7 @@ export interface Model {
 export interface ModelInput {
   sort_order: number;
   display_name: string;
+  group_name: string | null;
   type: ModelType;
   base_url: string;
   use_full_url: boolean;

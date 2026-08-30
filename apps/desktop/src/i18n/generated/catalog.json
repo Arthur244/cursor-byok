@@ -33,7 +33,7 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 151,
+          "line": 152,
           "column": 40
         }
       ]
@@ -106,12 +106,12 @@
       "refs": [
         {
           "file": "features/models/CursorModelCards.tsx",
-          "line": 151,
+          "line": 165,
           "column": 64
         },
         {
           "file": "features/models/CursorModelCards.tsx",
-          "line": 265,
+          "line": 279,
           "column": 70
         },
         {
@@ -141,7 +141,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 142,
+          "line": 148,
           "column": 27
         }
       ]
@@ -205,12 +205,12 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 181,
+          "line": 182,
           "column": 16
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 296,
+          "line": 356,
           "column": 73
         }
       ]
@@ -249,7 +249,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 307,
+          "line": 367,
           "column": 89
         }
       ]
@@ -447,12 +447,12 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 168,
+          "line": 169,
           "column": 16
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 306,
+          "line": 366,
           "column": 36
         }
       ]
@@ -476,7 +476,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 264,
+          "line": 304,
           "column": 211
         }
       ]
@@ -512,7 +512,7 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 153,
+          "line": 154,
           "column": 286
         }
       ]
@@ -524,12 +524,12 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 142,
+          "line": 143,
           "column": 59
         },
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 142,
+          "line": 143,
           "column": 124
         }
       ]
@@ -546,17 +546,17 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 267,
+          "line": 307,
           "column": 51
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 267,
+          "line": 307,
           "column": 130
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 269,
+          "line": 309,
           "column": 74
         }
       ]
@@ -679,7 +679,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 277,
+          "line": 330,
           "column": 52
         }
       ]
@@ -778,17 +778,17 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 157,
+          "line": 158,
           "column": 49
         },
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 159,
+          "line": 160,
           "column": 50
         },
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 162,
+          "line": 163,
           "column": 50
         }
       ]
@@ -802,7 +802,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 300,
+          "line": 360,
           "column": 89
         }
       ]
@@ -838,7 +838,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 262,
+          "line": 302,
           "column": 134
         }
       ]
@@ -902,7 +902,7 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 153,
+          "line": 154,
           "column": 42
         }
       ]
@@ -952,12 +952,12 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 164,
+          "line": 165,
           "column": 27
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 299,
+          "line": 359,
           "column": 186
         }
       ]
@@ -986,7 +986,7 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 277,
+          "line": 330,
           "column": 76
         },
         {
@@ -1079,7 +1079,7 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 154,
+          "line": 155,
           "column": 42
         }
       ]
@@ -1093,7 +1093,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 313,
+          "line": 373,
           "column": 70
         }
       ]
@@ -1167,17 +1167,17 @@
       "refs": [
         {
           "file": "features/models/CursorModelCards.tsx",
-          "line": 153,
+          "line": 167,
           "column": 96
         },
         {
           "file": "features/models/CursorModelCards.tsx",
-          "line": 267,
+          "line": 281,
           "column": 102
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 277,
+          "line": 330,
           "column": 99
         },
         {
@@ -1213,6 +1213,23 @@
           "file": "features/plugins/PluginResourcePanels.tsx",
           "line": 228,
           "column": 56
+        }
+      ]
+    },
+    "3260348163d03b8e": {
+      "source": "留空保持不变",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 323,
+          "column": 35
+        },
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 326,
+          "column": 41
         }
       ]
     },
@@ -1269,7 +1286,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 298,
+          "line": 358,
           "column": 123
         }
       ]
@@ -1505,7 +1522,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 264,
+          "line": 304,
           "column": 197
         }
       ]
@@ -1517,7 +1534,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 274,
+          "line": 314,
           "column": 80
         },
         {
@@ -1630,7 +1647,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 151,
+          "line": 157,
           "column": 27
         }
       ]
@@ -1754,12 +1771,12 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 157,
+          "line": 158,
           "column": 25
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 299,
+          "line": 359,
           "column": 34
         }
       ]
@@ -1771,22 +1788,22 @@
       "refs": [
         {
           "file": "features/models/CursorModelCards.tsx",
-          "line": 150,
+          "line": 164,
           "column": 86
         },
         {
           "file": "features/models/CursorModelCards.tsx",
-          "line": 173,
+          "line": 187,
           "column": 86
         },
         {
           "file": "features/models/CursorModelCards.tsx",
-          "line": 264,
+          "line": 278,
           "column": 92
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 269,
+          "line": 309,
           "column": 703
         }
       ]
@@ -1834,7 +1851,7 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 148,
+          "line": 149,
           "column": 145
         }
       ]
@@ -1875,7 +1892,7 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 206,
+          "line": 207,
           "column": 41
         }
       ]
@@ -1933,7 +1950,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 188,
+          "line": 194,
           "column": 13
         }
       ]
@@ -1993,7 +2010,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 213,
+          "line": 252,
           "column": 47
         }
       ]
@@ -2017,7 +2034,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 267,
+          "line": 307,
           "column": 63
         }
       ]
@@ -2029,17 +2046,17 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 159,
+          "line": 160,
           "column": 27
         },
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 162,
+          "line": 163,
           "column": 27
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 299,
+          "line": 359,
           "column": 83
         }
       ]
@@ -2063,7 +2080,7 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 155,
+          "line": 156,
           "column": 69
         }
       ]
@@ -2140,7 +2157,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 263,
+          "line": 303,
           "column": 122
         }
       ]
@@ -2314,12 +2331,12 @@
       "refs": [
         {
           "file": "features/models/CursorModelCards.tsx",
-          "line": 152,
+          "line": 166,
           "column": 64
         },
         {
           "file": "features/models/CursorModelCards.tsx",
-          "line": 266,
+          "line": 280,
           "column": 70
         },
         {
@@ -2336,7 +2353,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 486,
+          "line": 488,
           "column": 43
         }
       ]
@@ -2499,17 +2516,17 @@
       "refs": [
         {
           "file": "features/models/CursorModelCards.tsx",
-          "line": 150,
+          "line": 164,
           "column": 98
         },
         {
           "file": "features/models/CursorModelCards.tsx",
-          "line": 173,
+          "line": 187,
           "column": 98
         },
         {
           "file": "features/models/CursorModelCards.tsx",
-          "line": 264,
+          "line": 278,
           "column": 104
         }
       ]
@@ -2586,7 +2603,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 261,
+          "line": 301,
           "column": 103
         }
       ]
@@ -2663,7 +2680,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 481,
+          "line": 483,
           "column": 43
         }
       ]
@@ -2711,12 +2728,12 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 175,
+          "line": 176,
           "column": 16
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 294,
+          "line": 354,
           "column": 67
         }
       ]
@@ -2817,7 +2834,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 418,
+          "line": 420,
           "column": 21
         }
       ]
@@ -2844,7 +2861,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 186,
+          "line": 192,
           "column": 11
         }
       ]
@@ -2871,7 +2888,7 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 153,
+          "line": 154,
           "column": 298
         }
       ]
@@ -2987,7 +3004,7 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 148,
+          "line": 149,
           "column": 115
         }
       ]
@@ -3086,7 +3103,7 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 142,
+          "line": 143,
           "column": 76
         }
       ]
@@ -3124,7 +3141,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 314,
+          "line": 374,
           "column": 87
         }
       ]
@@ -3208,7 +3225,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 277,
+          "line": 330,
           "column": 250
         }
       ]
@@ -3314,12 +3331,12 @@
         },
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 163,
+          "line": 164,
           "column": 27
         },
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 163,
+          "line": 164,
           "column": 58
         }
       ]
@@ -3479,7 +3496,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 197,
+          "line": 203,
           "column": 22
         }
       ]
@@ -3532,8 +3549,13 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 269,
+          "line": 309,
           "column": 432
+        },
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 317,
+          "column": 193
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
@@ -3616,7 +3638,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 125,
+          "line": 131,
           "column": 15
         }
       ]
@@ -3671,7 +3693,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 269,
+          "line": 309,
           "column": 715
         }
       ]
@@ -3705,7 +3727,7 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 149,
+          "line": 150,
           "column": 61
         }
       ]
@@ -3717,12 +3739,12 @@
       "refs": [
         {
           "file": "features/models/CursorModelCards.tsx",
-          "line": 246,
+          "line": 260,
           "column": 113
         },
         {
           "file": "features/models/CursorModelCards.tsx",
-          "line": 246,
+          "line": 260,
           "column": 131
         }
       ]
@@ -3744,7 +3766,7 @@
         },
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 154,
+          "line": 155,
           "column": 25
         }
       ]
@@ -3780,7 +3802,7 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 155,
+          "line": 156,
           "column": 118
         }
       ]
@@ -3912,6 +3934,23 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 297,
           "column": 70
+        }
+      ]
+    },
+    "b2617bf9ae663752": {
+      "source": "分组设置",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorModelCards.tsx",
+          "line": 132,
+          "column": 99
+        },
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 317,
+          "column": 49
         }
       ]
     },
@@ -4049,7 +4088,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 274,
+          "line": 314,
           "column": 103
         }
       ]
@@ -4107,7 +4146,7 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 154,
+          "line": 155,
           "column": 99
         }
       ]
@@ -4134,7 +4173,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 189,
+          "line": 195,
           "column": 13
         }
       ]
@@ -4189,6 +4228,23 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 110,
           "column": 83
+        }
+      ]
+    },
+    "be961dc60ab610da": {
+      "source": "修改后应用于该分组下的全部模型；留空保持各模型现有配置不变。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 322,
+          "column": 45
+        },
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 325,
+          "column": 42
         }
       ]
     },
@@ -4292,7 +4348,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 269,
+          "line": 309,
           "column": 62
         }
       ]
@@ -4304,12 +4360,12 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 160,
+          "line": 161,
           "column": 27
         },
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 160,
+          "line": 161,
           "column": 58
         }
       ]
@@ -4386,7 +4442,7 @@
         },
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 153,
+          "line": 154,
           "column": 25
         }
       ]
@@ -4468,7 +4524,7 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 164,
+          "line": 165,
           "column": 50
         }
       ]
@@ -4533,8 +4589,13 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 148,
+          "line": 149,
           "column": 70
+        },
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 322,
+          "column": 27
         }
       ]
     },
@@ -4545,7 +4606,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 269,
+          "line": 309,
           "column": 675
         },
         {
@@ -4598,17 +4659,17 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 157,
+          "line": 158,
           "column": 121
         },
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 159,
+          "line": 160,
           "column": 122
         },
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 162,
+          "line": 163,
           "column": 122
         }
       ]
@@ -4620,7 +4681,7 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 164,
+          "line": 165,
           "column": 137
         }
       ]
@@ -4636,6 +4697,18 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 298,
           "column": 44
+        }
+      ]
+    },
+    "d7e266bdc8064193": {
+      "source": "分组名称",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 319,
+          "column": 27
         }
       ]
     },
@@ -4675,7 +4748,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 275,
+          "line": 315,
           "column": 47
         }
       ]
@@ -4699,12 +4772,12 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 110,
+          "line": 111,
           "column": 88
         },
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 155,
+          "line": 156,
           "column": 54
         }
       ]
@@ -4793,7 +4866,7 @@
       "refs": [
         {
           "file": "features/models/CursorModelCards.tsx",
-          "line": 174,
+          "line": 188,
           "column": 64
         },
         {
@@ -4918,7 +4991,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 209,
+          "line": 215,
           "column": 26
         }
       ]
@@ -5004,7 +5077,7 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 148,
+          "line": 149,
           "column": 54
         }
       ]
@@ -5086,12 +5159,12 @@
       "refs": [
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 141,
+          "line": 142,
           "column": 25
         },
         {
           "file": "features/models/CursorModelEditor.tsx",
-          "line": 141,
+          "line": 142,
           "column": 55
         }
       ]
@@ -5156,6 +5229,18 @@
         }
       ]
     },
+    "eb4a3db23661fb52": {
+      "source": "应用于该分组下的全部模型，并作为 Cursor 模型选择器中的徽章标签；清空则恢复显示服务器域名。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 319,
+          "column": 44
+        }
+      ]
+    },
     "eb77492c9f76a7e1": {
       "source": "安装命令已自动复制。点击“打开终端”，将命令粘贴到终端中执行，并按提示输入密码。",
       "kind": "text",
@@ -5163,7 +5248,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 275,
+          "line": 315,
           "column": 77
         }
       ]
@@ -5192,7 +5277,7 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 260,
+          "line": 300,
           "column": 69
         }
       ]
@@ -5204,7 +5289,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 274,
+          "line": 314,
           "column": 53
         }
       ]

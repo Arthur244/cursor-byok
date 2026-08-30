@@ -32,6 +32,7 @@ type CursorModelCardsProps = {
   onTestPluginModel: (model: PluginModelDescriptor) => void;
   onPluginSettings: (model: PluginModelDescriptor) => void;
   onReorder: (modelHashes: string[]) => void;
+  onGroupSettings: (group: CursorModelGroup) => void;
 };
 
 type ModelGridProps = Omit<CursorModelCardsProps, "grouping" | "pluginModels" | "onTestPluginModel" | "onPluginSettings"> & {
@@ -60,6 +61,7 @@ export function CursorModelCards(props: CursorModelCardsProps) {
         key={group.key}
         label={group.label}
         icon={group.icon}
+        onSettings={props.grouping === "provider" ? () => props.onGroupSettings(group) : undefined}
       >
         {group.models.map((model) => <ModelListRow
           key={model.model_hash}
@@ -107,25 +109,37 @@ function pluginGroups(models: PluginModelDescriptor[]) {
   return groups;
 }
 
-function CollapsibleGroup({ label, icon, iconSrc, children }: {
+function CollapsibleGroup({ label, icon, iconSrc, onSettings, children }: {
   label: string;
   icon?: IconifyIcon;
   iconSrc?: string;
+  onSettings?: () => void;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(true);
   return <Card className={styles.groupCard}>
-    <button
-      type="button"
-      className={styles.groupToggle}
-      aria-expanded={open}
-      onClick={() => setOpen((current) => !current)}
-    >
-      {icon && <Icon icon={icon} size="1.1em" />}
-      {iconSrc && <Icon src={iconSrc} size="1.1em" />}
-      <span className={styles.groupLabel}>{label}</span>
-      <Icon icon={open ? chevronDownIcon : chevronRightIcon} size="1em" />
-    </button>
+    <div className={styles.groupHeader}>
+      <button
+        type="button"
+        className={styles.groupToggle}
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        {icon && <Icon icon={icon} size="1.1em" />}
+        {iconSrc && <Icon src={iconSrc} size="1.1em" />}
+        <span className={styles.groupLabel}>{label}</span>
+      </button>
+      {onSettings && <button type="button" className={styles.groupSettings} onClick={onSettings}>{t("分组设置")}</button>}
+      <button
+        type="button"
+        className={styles.groupChevron}
+        tabIndex={-1}
+        aria-hidden="true"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <Icon icon={open ? chevronDownIcon : chevronRightIcon} size="1em" />
+      </button>
+    </div>
     {open && <div className={styles.modelList}>{children}</div>}
   </Card>;
 }
@@ -273,8 +287,9 @@ function ModelGrid({
 }
 
 function providerGroup(model: Model) {
-  const label = providerDomain(model.base_url);
-  return { key: label, label, icon: flatColorOrganizationIcon };
+  const key = providerDomain(model.base_url);
+  const label = model.group_name?.trim() || key;
+  return { key, label, icon: flatColorOrganizationIcon };
 }
 
 function providerDomain(baseUrl: string) {

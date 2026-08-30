@@ -24,6 +24,7 @@ export const emptyCursorModelDraft = (): CursorModelDraft => ({
   model: {
     sort_order: 0,
     display_name: "",
+    group_name: null,
     type: "openai",
     base_url: "",
     use_full_url: false,

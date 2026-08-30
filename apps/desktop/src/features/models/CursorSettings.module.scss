@@ -73,8 +73,34 @@
 .groupCard {
   padding: 4px 12px 8px;
 }
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.groupSettings {
+  padding: 4px 2px;
+  color: var(--vscode-descriptionForeground);
+  background: none;
+  border: none;
+  font-size: type.$font-size-xs;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover { color: var(--vscode-foreground); }
+}
+.groupChevron {
+  display: flex;
+  align-items: center;
+  padding: 4px 0;
+  color: var(--vscode-foreground);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
 .groupToggle {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
