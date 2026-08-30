@@ -25,6 +25,7 @@ use crate::{
         ModelRequest, ModelSpec, ModelType, Overview, ProjectedContent, ProjectedMessage,
         PromptSpec, ProviderType, Role,
     },
+    plugin::{PluginRuntime, PluginRuntimeStatus},
     provider::{is_valid_response_event, ModelEvent, Provider},
     store::{
         DesktopSettings, PortSettings, ProxySettings, ProxySettingsInput, StatisticsStorage, Store,
@@ -38,6 +39,7 @@ pub struct ControlService {
     store: Store,
     cursor_harness: CursorHarness,
     provider: Arc<dyn Provider>,
+    plugin_runtime: PluginRuntime,
     model_tests: Arc<Mutex<BTreeMap<String, CancellationToken>>>,
 }
 
@@ -148,12 +150,25 @@ impl ControlService {
             cursor_harness: CursorHarness::new(store.clone())?,
             store,
             provider,
+            plugin_runtime: PluginRuntime::managed()?,
             model_tests: Arc::new(Mutex::new(BTreeMap::new())),
         })
     }
 
     pub fn cursor_harness(&self) -> &CursorHarness {
         &self.cursor_harness
+    }
+
+    pub fn plugin_runtime_status(&self) -> PluginRuntimeStatus {
+        self.plugin_runtime.status()
+    }
+
+    pub fn initialize_plugin_runtime(&self) -> PluginRuntimeStatus {
+        self.plugin_runtime.initialize(self.store.clone())
+    }
+
+    pub fn cancel_plugin_runtime_initialization(&self) -> PluginRuntimeStatus {
+        self.plugin_runtime.cancel_initialization()
     }
 
     pub(super) async fn ads(

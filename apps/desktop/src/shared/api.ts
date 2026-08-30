@@ -148,6 +148,19 @@ export interface DesktopSettings {
   show_dock_icon: boolean;
 }
 
+export type PluginRuntimeState = "uninitialized" | "initializing" | "ready" | "failed" | "unsupported";
+export type PluginRuntimePhase = "checking" | "downloading" | "verifying" | "installing" | "validating";
+
+export interface PluginRuntimeStatus {
+  state: PluginRuntimeState;
+  version: string;
+  target: string | null;
+  phase: PluginRuntimePhase | null;
+  downloaded_bytes: number;
+  total_bytes: number | null;
+  error: string | null;
+}
+
 export interface OverviewMetrics {
   llm_calls: number;
   successful_calls: number;
@@ -309,6 +322,9 @@ export const api = {
   },
   cursorHarness: () => request<CursorHarnessStatus>("/harness/cursor/status"),
   initializeCursorCa: () => request<CursorHarnessStatus>("/harness/cursor/ca/initialize", { method: "POST" }),
+  pluginRuntime: () => request<PluginRuntimeStatus>("/plugins/runtime"),
+  initializePluginRuntime: () => request<PluginRuntimeStatus>("/plugins/runtime", { method: "POST" }),
+  cancelPluginRuntimeInitialization: () => request<PluginRuntimeStatus>("/plugins/runtime", { method: "DELETE" }),
   openCursorCaInstallTerminal: async (command: string) => {
     if (!packagedDesktop) throw new Error(t("请在桌面应用中打开终端安装 CA"));
     const { invoke } = await import("@tauri-apps/api/core");

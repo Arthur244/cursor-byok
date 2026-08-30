@@ -124,6 +124,18 @@
         }
       ]
     },
+    "06619f339fa0ab46": {
+      "source": "正在准备插件运行时",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 130,
+          "column": 21
+        }
+      ]
+    },
     "076832c1b2de22c3": {
       "source": "缓存写入：{tokens}",
       "kind": "template",
@@ -752,6 +764,20 @@
         }
       ]
     },
+    "2400fbd0aeab9e13": {
+      "source": "已下载 {downloaded}",
+      "kind": "template",
+      "placeholders": [
+        "downloaded"
+      ],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 114,
+          "column": 122
+        }
+      ]
+    },
     "24a0a24864454575": {
       "source": "已存在，跳过",
       "kind": "text",
@@ -797,7 +823,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 238,
+          "line": 240,
           "column": 14
         }
       ]
@@ -883,12 +909,12 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 228,
+          "line": 230,
           "column": 20
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 239,
+          "line": 241,
           "column": 20
         }
       ]
@@ -993,7 +1019,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 227,
+          "line": 229,
           "column": 14
         }
       ]
@@ -1046,6 +1072,23 @@
         }
       ]
     },
+    "35fcbd57d58a9394": {
+      "source": "插件管理",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 37,
+          "column": 14
+        },
+        {
+          "file": "shell/AppLayout.tsx",
+          "line": 80,
+          "column": 46
+        }
+      ]
+    },
     "36f33adaf0942634": {
       "source": "确认",
       "kind": "text",
@@ -1058,7 +1101,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 240,
+          "line": 242,
           "column": 21
         }
       ]
@@ -1275,6 +1318,18 @@
         }
       ]
     },
+    "3e0b34ddc2121f7d": {
+      "source": "运行平台",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 81,
+          "column": 23
+        }
+      ]
+    },
     "3f6c25aa329163a4": {
       "source": "原接口路径会追加到此服务地址。",
       "kind": "text",
@@ -1308,6 +1363,23 @@
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 262,
           "column": 80
+        },
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 102,
+          "column": 55
+        }
+      ]
+    },
+    "402495402ce333b1": {
+      "source": "重新初始化插件",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 70,
+          "column": 68
         }
       ]
     },
@@ -1541,6 +1613,18 @@
         }
       ]
     },
+    "4a861200ad513a3c": {
+      "source": "初始化插件运行时",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 100,
+          "column": 12
+        }
+      ]
+    },
     "4a8d6841b4023edf": {
       "source": "确认导入",
       "kind": "text",
@@ -1550,6 +1634,18 @@
           "file": "features/models/LegacyModelImport.tsx",
           "line": 59,
           "column": 21
+        }
+      ]
+    },
+    "4aca6a31090fe2b8": {
+      "source": "初始化中…",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 70,
+          "column": 46
         }
       ]
     },
@@ -1577,7 +1673,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 200,
+          "line": 202,
           "column": 67
         }
       ]
@@ -1871,6 +1967,18 @@
         }
       ]
     },
+    "5c62e36c152dfc7c": {
+      "source": "插件运行时初始化完成",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 93,
+          "column": 7
+        }
+      ]
+    },
     "5d59857bf039cac9": {
       "source": "Cursor 助手 v{version}",
       "kind": "template",
@@ -1904,7 +2012,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 244,
+          "line": 246,
           "column": 11
         }
       ]
@@ -1994,6 +2102,11 @@
           "file": "features/calls/CallTable.tsx",
           "line": 16,
           "column": 15
+        },
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 79,
+          "column": 23
         }
       ]
     },
@@ -2028,7 +2141,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 318,
+          "line": 333,
           "column": 43
         }
       ]
@@ -2280,12 +2393,12 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 153,
+          "line": 177,
           "column": 23
         },
         {
           "file": "shared/store/appStore.ts",
-          "line": 160,
+          "line": 184,
           "column": 25
         }
       ]
@@ -2333,7 +2446,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 313,
+          "line": 328,
           "column": 43
         }
       ]
@@ -2359,6 +2472,18 @@
           "file": "features/settings/SettingsPage.tsx",
           "line": 297,
           "column": 23
+        }
+      ]
+    },
+    "7c10d97162c96dbd": {
+      "source": "正在验证插件运行时",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 129,
+          "column": 31
         }
       ]
     },
@@ -2388,7 +2513,7 @@
       "refs": [
         {
           "file": "App.tsx",
-          "line": 50,
+          "line": 52,
           "column": 19
         }
       ]
@@ -2448,8 +2573,20 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 262,
+          "line": 275,
           "column": 21
+        }
+      ]
+    },
+    "8213941f12320ce1": {
+      "source": "当前操作系统或 CPU 架构暂不受支持",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 63,
+          "column": 25
         }
       ]
     },
@@ -2465,6 +2602,21 @@
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 178,
           "column": 11
+        }
+      ]
+    },
+    "83e8d0b7aff2b394": {
+      "source": "已下载 {downloaded} / {total}",
+      "kind": "template",
+      "placeholders": [
+        "downloaded",
+        "total"
+      ],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 114,
+          "column": 20
         }
       ]
     },
@@ -2572,6 +2724,18 @@
         }
       ]
     },
+    "8911e4f1407d58cb": {
+      "source": "正在下载插件运行时",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 126,
+          "column": 32
+        }
+      ]
+    },
     "89a101b809be7cfc": {
       "source": "系统会原样使用此地址，不追加或修改请求路径。",
       "kind": "text",
@@ -2649,7 +2813,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 246,
+          "line": 248,
           "column": 16
         }
       ]
@@ -2757,6 +2921,18 @@
         }
       ]
     },
+    "945fb1c67eca8493": {
+      "source": "正在安装插件运行时",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 128,
+          "column": 31
+        }
+      ]
+    },
     "946b3ffc02f026c0": {
       "source": "确定删除这个模型吗？",
       "kind": "text",
@@ -2824,7 +3000,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 233,
+          "line": 235,
           "column": 11
         }
       ]
@@ -2856,6 +3032,23 @@
         }
       ]
     },
+    "9db205c6055bacc4": {
+      "source": "插件运行时初始化失败",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 56,
+          "column": 9
+        },
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 95,
+          "column": 9
+        }
+      ]
+    },
     "9e356080c56877f8": {
       "source": "已关闭静默启动",
       "kind": "text",
@@ -2877,6 +3070,18 @@
           "file": "features/home/overview/OverviewTimeRangeFilter.tsx",
           "line": 106,
           "column": 70
+        }
+      ]
+    },
+    "9ed11266ead88f5b": {
+      "source": "正在验证插件运行时下载文件",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 127,
+          "column": 30
         }
       ]
     },
@@ -3069,7 +3274,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 229,
+          "line": 231,
           "column": 21
         }
       ]
@@ -3173,6 +3378,18 @@
           "file": "features/models/CursorModelEditor.tsx",
           "line": 145,
           "column": 25
+        }
+      ]
+    },
+    "ab27f80d046f3d7f": {
+      "source": "已就绪",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 79,
+          "column": 72
         }
       ]
     },
@@ -3281,12 +3498,12 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 260,
+          "line": 262,
           "column": 64
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 260,
+          "line": 262,
           "column": 125
         }
       ]
@@ -3320,6 +3537,23 @@
         }
       ]
     },
+    "b254ff315d861346": {
+      "source": "请重试初始化",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 61,
+          "column": 7
+        },
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 117,
+          "column": 70
+        }
+      ]
+    },
     "b4411558b932266f": {
       "source": "上游类型",
       "kind": "text",
@@ -3329,6 +3563,18 @@
           "file": "features/calls/CallDetails.tsx",
           "line": 21,
           "column": 6
+        }
+      ]
+    },
+    "b4c9e08870d41aa2": {
+      "source": "需要先初始化插件运行时",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 59,
+          "column": 11
         }
       ]
     },
@@ -3556,8 +3802,20 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 251,
+          "line": 253,
           "column": 24
+        }
+      ]
+    },
+    "bda74b5674b6a57d": {
+      "source": "初始化插件",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 70,
+          "column": 83
         }
       ]
     },
@@ -3584,6 +3842,18 @@
           "file": "features/home/metrics/CacheHitRateChart.tsx",
           "line": 58,
           "column": 62
+        }
+      ]
+    },
+    "c0b3fbff51ccc40b": {
+      "source": "完成",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 102,
+          "column": 45
         }
       ]
     },
@@ -3615,6 +3885,18 @@
           "file": "features/calls/CallDetails.tsx",
           "line": 58,
           "column": 51
+        }
+      ]
+    },
+    "c54863655e879b36": {
+      "source": "当前系统不支持插件运行时",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 58,
+          "column": 11
         }
       ]
     },
@@ -3716,6 +3998,18 @@
           "file": "features/models/CursorModelEditor.tsx",
           "line": 144,
           "column": 25
+        }
+      ]
+    },
+    "cb99f0138b032687": {
+      "source": "初始化将下载并安装插件运行时。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 64,
+          "column": 9
         }
       ]
     },
@@ -3905,6 +4199,32 @@
         }
       ]
     },
+    "d6e61888b07853ea": {
+      "source": "高级",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "shell/AppLayout.tsx",
+          "line": 79,
+          "column": 29
+        }
+      ]
+    },
+    "d766536c18e8e990": {
+      "source": "插件运行时 {version} 已安装，可以开始使用插件。",
+      "kind": "template",
+      "placeholders": [
+        "version"
+      ],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 118,
+          "column": 44
+        }
+      ]
+    },
     "d86fa42c3848c680": {
       "source": "使用系统代理",
       "kind": "text",
@@ -3929,7 +4249,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 186,
+          "line": 188,
           "column": 54
         }
       ]
@@ -4270,6 +4590,18 @@
         }
       ]
     },
+    "e7cef7b834f301e7": {
+      "source": "插件运行时版本",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 80,
+          "column": 23
+        }
+      ]
+    },
     "e825a2a42c22380e": {
       "source": "模型类型",
       "kind": "text",
@@ -4451,6 +4783,18 @@
         }
       ]
     },
+    "f4f4c81a4d719711": {
+      "source": "插件运行时",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 77,
+          "column": 24
+        }
+      ]
+    },
     "f4fa9f31ea2ae58d": {
       "source": "过去一年的 Token 用量日历",
       "kind": "text",
@@ -4575,11 +4919,28 @@
         }
       ]
     },
+    "fad86bf65f72c747": {
+      "source": "下载进度",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 109,
+          "column": 23
+        }
+      ]
+    },
     "fb11aa6f29827095": {
       "source": "检查中…",
       "kind": "text",
       "placeholders": [],
       "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 70,
+          "column": 19
+        },
         {
           "file": "features/settings/AppLifecycleSettingsCard.tsx",
           "line": 160,
@@ -4596,6 +4957,23 @@
           "file": "features/models/CursorGates.tsx",
           "line": 20,
           "column": 54
+        }
+      ]
+    },
+    "fc22d1ab9ac73c6f": {
+      "source": "正在检查插件运行时",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 54,
+          "column": 7
+        },
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 125,
+          "column": 29
         }
       ]
     },

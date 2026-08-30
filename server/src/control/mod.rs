@@ -4,6 +4,7 @@ mod calls;
 mod harness;
 mod models;
 mod overview;
+mod plugins;
 mod service;
 mod settings;
 
@@ -136,6 +137,12 @@ pub fn api_router(service: ControlService) -> Router {
         )
         .route("/__byok-api__/api/llm-calls", get(calls::list))
         .route("/__byok-api__/api/llm-calls/{call_id}", get(calls::detail))
+        .route(
+            "/__byok-api__/api/plugins/runtime",
+            get(plugins::runtime_status)
+                .post(plugins::initialize_runtime)
+                .delete(plugins::cancel_runtime_initialization),
+        )
         .route(
             "/__byok-api__/api/settings/observability",
             get(settings::get).put(settings::update),
