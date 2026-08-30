@@ -71,23 +71,44 @@ impl PluginDataStore {
             })
     }
 
+    /// 全程使用同步 IO 在阻塞线程完成:tokio 异步文件的关闭是延迟的,
+    /// 替换前句柄可能仍被本进程持有;同步写入保证替换时句柄已确定关闭。
     async fn write_locked(&self, path: &Path, key: &str, value: &serde_json::Value) -> Result<()> {
-        let directory = path.parent().expect("plugin data path has a parent");
-        tokio::fs::create_dir_all(directory).await?;
-        set_directory_permissions(directory)?;
+        let directory = path
+            .parent()
+            .expect("plugin data path has a parent")
+            .to_owned();
         let temporary = directory.join(format!(".{key}.{}.tmp", uuid::Uuid::new_v4()));
+        let target = path.to_owned();
         let bytes = serde_json::to_vec_pretty(value)?;
-        tokio::fs::write(&temporary, bytes).await?;
-        set_file_permissions(&temporary)?;
-        let file = tokio::fs::OpenOptions::new()
-            .read(true)
-            .open(&temporary)
-            .await?;
-        file.sync_all().await?;
-        drop(file);
-        replace_file(&temporary, path).await?;
-        set_file_permissions(path)?;
-        Ok(())
+        tokio::task::spawn_blocking(move || {
+            // Windows 上杀软或索引器会短暂锁住新建文件,任何一步都可能
+            // 拒绝访问,因此把整个序列作为一个整体重试。
+            let mut attempts = 0;
+            loop {
+                match write_once(&directory, &temporary, &target, &bytes) {
+                    Ok(()) => return Ok(()),
+                    Err((step, error)) if attempts < 20 && transient(&error) => {
+                        attempts += 1;
+                        tracing::debug!(step, attempts, %error, "retrying plugin data write");
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    }
+                    Err((step, error)) => {
+                        let _ = std::fs::remove_file(&temporary);
+                        tracing::warn!(
+                            path = %target.display(),
+                            step,
+                            attempts,
+                            %error,
+                            "plugin data write failed"
+                        );
+                        return Err(Error::Config(format!("{step}: {error}")));
+                    }
+                }
+            }
+        })
+        .await
+        .expect("plugin data write task panicked")
     }
 
     pub async fn clear(&self, plugin_id: &str) -> Result<()> {
@@ -120,46 +141,53 @@ impl PluginDataStore {
     }
 }
 
-/// 原子替换目标文件。Windows 上 rename 不覆盖已存在文件,且目标可能被
-/// 杀毒软件或索引器短暂锁定(拒绝访问/共享冲突),需删除后重试。
-async fn replace_file(temporary: &Path, path: &Path) -> Result<()> {
+/// 单次完整写入:建目录、写临时文件、落盘、原子替换。
+/// 失败时返回失败步骤的标签,供上层区分重试与报错。
+fn write_once(
+    directory: &Path,
+    temporary: &Path,
+    target: &Path,
+    bytes: &[u8],
+) -> std::result::Result<(), (&'static str, std::io::Error)> {
+    use std::io::Write;
+    std::fs::create_dir_all(directory).map_err(|error| ("create data directory", error))?;
+    let _ = set_directory_permissions(directory);
+    let mut file =
+        std::fs::File::create(temporary).map_err(|error| ("create temporary file", error))?;
+    file.write_all(bytes)
+        .map_err(|error| ("write temporary file", error))?;
+    file.sync_all()
+        .map_err(|error| ("sync temporary file", error))?;
+    drop(file);
+    let _ = set_file_permissions(temporary);
+    // Windows 的 rename 不覆盖已存在文件,先删除旧文件。
+    #[cfg(windows)]
+    match std::fs::remove_file(target) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(("remove previous file", error)),
+    }
+    std::fs::rename(temporary, target).map_err(|error| ("replace target file", error))?;
+    let _ = set_file_permissions(target);
+    Ok(())
+}
+
+/// Windows 下拒绝访问(5)与共享冲突(32)通常是杀软或索引器的
+/// 瞬时锁定,值得重试;其余错误与其他平台一律直接失败。
+fn transient(error: &std::io::Error) -> bool {
     #[cfg(windows)]
     {
         const ACCESS_DENIED: i32 = 5;
         const SHARING_VIOLATION: i32 = 32;
-        let mut attempts = 0;
-        loop {
-            if path.exists() {
-                let _ = tokio::fs::remove_file(path).await;
-            }
-            match tokio::fs::rename(temporary, path).await {
-                Ok(()) => return Ok(()),
-                Err(error)
-                    if attempts < 20
-                        && matches!(
-                            error.raw_os_error(),
-                            Some(ACCESS_DENIED | SHARING_VIOLATION)
-                        ) =>
-                {
-                    attempts += 1;
-                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                }
-                Err(error) => {
-                    tracing::warn!(
-                        path = %path.display(),
-                        attempts,
-                        %error,
-                        "plugin data file replacement failed"
-                    );
-                    return Err(error.into());
-                }
-            }
-        }
+        matches!(
+            error.raw_os_error(),
+            Some(ACCESS_DENIED | SHARING_VIOLATION)
+        )
     }
     #[cfg(not(windows))]
     {
-        tokio::fs::rename(temporary, path).await?;
-        Ok(())
+        let _ = error;
+        false
     }
 }
 

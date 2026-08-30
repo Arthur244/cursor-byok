@@ -382,12 +382,13 @@ impl PluginRegistry {
                 })
             }
             OAuth2Poll::Completed { resources } => {
-                self.inner.oauth_sessions.lock().await.remove(session_id);
+                // 持久化成功后才销毁会话:写盘瞬时失败时下次轮询还能重试。
                 let outcome = self
                     .inner
                     .state
                     .upsert_resources(&plugin_id, &resource_type, resources)
                     .await?;
+                self.inner.oauth_sessions.lock().await.remove(session_id);
                 let model_sync_error = self
                     .sync_provider_models_for_resource(&entry, &executable, &resource_type)
                     .await;
