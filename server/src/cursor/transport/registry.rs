@@ -10,6 +10,7 @@ use crate::{
         services::observability::CursorTraceRecorder,
     },
     provider::Provider,
+    search::WebCache,
     store::Store,
     Result,
 };
@@ -26,6 +27,7 @@ struct RegistryInner {
     upstream: Mutex<HashMap<String, u64>>,
     route_changed: Notify,
     store: Store,
+    web_cache: WebCache,
     conversations: ConversationRegistry,
 }
 
@@ -37,19 +39,38 @@ pub enum TransportRoute {
 
 impl TransportRegistry {
     pub fn new(store: Store, provider: Arc<dyn Provider>, compiler: PromptCompiler) -> Self {
+        Self::with_web_cache(store, provider, compiler, WebCache::default())
+    }
+
+    pub fn with_web_cache(
+        store: Store,
+        provider: Arc<dyn Provider>,
+        compiler: PromptCompiler,
+        web_cache: WebCache,
+    ) -> Self {
         Self {
             inner: Arc::new(RegistryInner {
                 local: Mutex::new(HashMap::new()),
                 upstream: Mutex::new(HashMap::new()),
                 route_changed: Notify::new(),
-                conversations: ConversationRegistry::new(store.clone(), provider, compiler),
+                conversations: ConversationRegistry::new(
+                    store.clone(),
+                    provider,
+                    compiler,
+                    web_cache.clone(),
+                ),
                 store,
+                web_cache,
             }),
         }
     }
 
     pub fn store(&self) -> &Store {
         &self.inner.store
+    }
+
+    pub fn web_cache(&self) -> &WebCache {
+        &self.inner.web_cache
     }
 
     pub fn conversations(&self) -> &ConversationRegistry {

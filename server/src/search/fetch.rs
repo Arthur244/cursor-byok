@@ -15,7 +15,9 @@ use reqwest::{
 use tokio::{net::lookup_host, time::timeout};
 use url::{Host, Url};
 
-use crate::{search::WebCache, store::Store};
+use crate::store::Store;
+
+use super::{WebCache, WebCacheEntry};
 
 const MAX_RESPONSE_SIZE: usize = 5 * 1024 * 1024;
 const MAX_REDIRECTS: usize = 5;
@@ -25,6 +27,7 @@ const FETCH_TIMEOUT: Duration = Duration::from_secs(30);
 pub struct FetchedPage {
     pub url: String,
     pub markdown: String,
+    pub cache: Option<WebCacheEntry>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -34,6 +37,7 @@ pub struct FetchError(String);
 #[derive(Clone)]
 pub struct WebFetch {
     client: FetchClient,
+    cache: WebCache,
 }
 
 #[derive(Clone)]
@@ -46,19 +50,27 @@ impl WebFetch {
     pub fn built_in() -> Self {
         Self {
             client: FetchClient::Direct,
+            cache: WebCache::default(),
         }
     }
 
-    pub(crate) fn managed(store: Store) -> Self {
+    pub(crate) fn managed(store: Store, cache: WebCache) -> Self {
         Self {
             client: FetchClient::Managed(store),
+            cache,
         }
     }
 
     pub async fn fetch(&self, value: &str) -> Result<FetchedPage, FetchError> {
-        timeout(FETCH_TIMEOUT, self.fetch_inner(value))
+        let mut page = timeout(FETCH_TIMEOUT, self.fetch_inner(value))
             .await
-            .map_err(|_| failure("request timed out"))?
+            .map_err(|_| failure("request timed out"))??;
+        page.cache = self
+            .cache
+            .store(&page.markdown)
+            .await
+            .map_err(|error| failure(format!("cannot cache fetched content: {error}")))?;
+        Ok(page)
     }
 
     async fn fetch_inner(&self, value: &str) -> Result<FetchedPage, FetchError> {
@@ -190,7 +202,11 @@ async fn page(response: Response) -> Result<FetchedPage, FetchError> {
     if markdown.trim().is_empty() {
         return Err(failure("response contains no readable content"));
     }
-    Ok(FetchedPage { url, markdown })
+    Ok(FetchedPage {
+        url,
+        markdown,
+        cache: None,
+    })
 }
 
 async fn limited_body(response: Response) -> Result<BytesMut, FetchError> {

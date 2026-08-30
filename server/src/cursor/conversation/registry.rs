@@ -9,6 +9,7 @@ use crate::{
     model::{ConversationId, RunId},
     provider::Provider,
     run::{CommandResult, RunHandle},
+    search::WebCache,
     store::Store,
 };
 
@@ -24,6 +25,7 @@ pub(crate) struct ConversationDependencies {
     pub store: Store,
     pub provider: Arc<dyn Provider>,
     pub compiler: PromptCompiler,
+    pub web_cache: WebCache,
 }
 
 struct RegistryInner {
@@ -40,7 +42,12 @@ struct ActiveRun {
 }
 
 impl ConversationRegistry {
-    pub fn new(store: Store, provider: Arc<dyn Provider>, compiler: PromptCompiler) -> Self {
+    pub fn new(
+        store: Store,
+        provider: Arc<dyn Provider>,
+        compiler: PromptCompiler,
+        web_cache: WebCache,
+    ) -> Self {
         Self {
             inner: Arc::new(RegistryInner {
                 current: Mutex::new(HashMap::new()),
@@ -50,6 +57,7 @@ impl ConversationRegistry {
                     store,
                     provider,
                     compiler,
+                    web_cache,
                 },
             }),
         }

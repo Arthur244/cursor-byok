@@ -14,6 +14,7 @@ use crate::{
     },
     local_app::CursorHarness,
     provider::ProviderRouter,
+    search::WebCache,
     store::Store,
     Result,
 };
@@ -40,7 +41,12 @@ impl App {
             store.clone(),
             config.provider_request_timeout,
         ));
-        let registry = TransportRegistry::new(store.clone(), provider.clone(), compiler);
+        let registry = TransportRegistry::with_web_cache(
+            store.clone(),
+            provider.clone(),
+            compiler,
+            WebCache::managed()?,
+        );
         let control = control::ControlService::new(store.clone(), provider)?;
         let harness = control.cursor_harness().clone();
         let mut router = api::router(registry.clone())?;
@@ -104,6 +110,7 @@ impl App {
 
     pub async fn serve_on(self, listener: TcpListener, shutdown: CancellationToken) -> Result<()> {
         let address = listener.local_addr()?;
+        self.registry.web_cache().set_service_addr(address);
         self.harness.set_backend_addr(address);
         tracing::info!(%address, "cursor server listening");
         let registry = self.registry;

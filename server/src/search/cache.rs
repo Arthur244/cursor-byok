@@ -2,7 +2,7 @@
 use std::{
     fs,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::Arc,
 };
 
@@ -14,6 +14,14 @@ use uuid::Uuid;
 use crate::{config::managed_data_dir, Error, Result};
 
 const CACHE_ROUTE: &str = "/web-cache";
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WebCacheEntry {
+    pub url: String,
+    pub file_path: String,
+    pub size_bytes: i64,
+    pub line_count: i64,
+}
 
 #[derive(Clone, Default)]
 pub struct WebCache {
@@ -27,7 +35,7 @@ struct WebCacheInner {
 
 impl WebCache {
     pub fn managed() -> Result<Self> {
-        Self::at(managed_data_dir()?.join("cache/web"))
+        Self::at(managed_data_dir()?.join("cache").join("web"))
     }
 
     pub fn at(directory: PathBuf) -> Result<Self> {
@@ -46,7 +54,7 @@ impl WebCache {
         }
     }
 
-    pub async fn store(&self, content: &str) -> Result<Option<String>> {
+    pub async fn store(&self, content: &str) -> Result<Option<WebCacheEntry>> {
         let Some(inner) = &self.inner else {
             return Ok(None);
         };
@@ -55,11 +63,19 @@ impl WebCache {
         })?;
         let file_name = format!("{}.txt", Uuid::new_v4());
         let path = inner.directory.join(&file_name);
+        let file_path = path.to_string_lossy().into_owned();
+        let size_bytes = content.len() as i64;
+        let line_count = content.lines().count() as i64;
         let bytes = content.as_bytes().to_vec();
         tokio::task::spawn_blocking(move || fs::write(path, bytes))
             .await
             .map_err(|error| Error::Store(format!("web cache write task failed: {error}")))??;
-        Ok(Some(format!("http://{address}{CACHE_ROUTE}/{file_name}")))
+        Ok(Some(WebCacheEntry {
+            url: format!("http://{address}{CACHE_ROUTE}/{file_name}"),
+            file_path,
+            size_bytes,
+            line_count,
+        }))
     }
 
     pub fn router(&self) -> Router {
@@ -70,7 +86,7 @@ impl WebCache {
     }
 
     #[cfg(test)]
-    fn directory(&self) -> &Path {
+    fn directory(&self) -> &std::path::Path {
         &self.inner.as_ref().expect("enabled web cache").directory
     }
 }
@@ -102,22 +118,24 @@ mod tests {
     #[tokio::test]
     async fn stores_uuid_named_content_and_serves_it_from_existing_router() {
         let directory = tempdir().unwrap();
-        let cache = WebCache::at(directory.path().join("cache/web")).unwrap();
-        cache
-            .set_service_addr("0.0.0.0:4312".parse().unwrap());
+        let cache = WebCache::at(directory.path().join("cache").join("web")).unwrap();
+        cache.set_service_addr("0.0.0.0:4312".parse().unwrap());
 
-        let location = cache.store("complete fetched content").await.unwrap().unwrap();
-        let name = location.rsplit('/').next().unwrap();
+        let entry = cache
+            .store("complete fetched content")
+            .await
+            .unwrap()
+            .unwrap();
+        let name = entry.url.rsplit('/').next().unwrap();
         let id = name.strip_suffix(".txt").unwrap();
         assert!(Uuid::parse_str(id).is_ok());
         assert_eq!(
             std::fs::read_to_string(cache.directory().join(name)).unwrap(),
             "complete fetched content"
         );
-        assert_eq!(
-            location,
-            format!("http://127.0.0.1:4312/web-cache/{name}")
-        );
+        assert_eq!(entry.url, format!("http://127.0.0.1:4312/web-cache/{name}"));
+        assert_eq!(entry.size_bytes, 24);
+        assert_eq!(entry.line_count, 1);
 
         let response = cache
             .router()

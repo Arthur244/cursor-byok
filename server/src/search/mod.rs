@@ -6,7 +6,7 @@ mod federation;
 mod fetch;
 mod search_provider;
 
-pub use cache::WebCache;
+pub use cache::{WebCache, WebCacheEntry};
 pub use engine::{HtmlEngine, JsonEngine, SearchEngine, SearchHit};
 pub use federation::{SearchError, WebSearch};
 pub use fetch::{FetchError, FetchedPage, WebFetch};

@@ -147,6 +147,7 @@ impl ConversationRuntime {
                                             tool_runtime.clone(),
                                             results.clone(),
                                             dependencies.store.clone(),
+                                            dependencies.web_cache.clone(),
                                         );
                                         let generation = RunGeneration {
                                             superseded: CancellationToken::new(),

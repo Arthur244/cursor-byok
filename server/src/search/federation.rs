@@ -8,7 +8,7 @@ use crate::store::Store;
 use super::{catalog, SearchEngine, SearchHit};
 
 const RRF_K: f64 = 60.0;
-const MAX_RESULTS: usize = 30;
+const MAX_RESULTS: usize = 15;
 
 #[derive(Clone)]
 pub struct WebSearch {

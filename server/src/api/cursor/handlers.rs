@@ -31,6 +31,7 @@ pub fn router(registry: TransportRegistry) -> Result<Router> {
 }
 
 fn router_with_proxy(registry: TransportRegistry, proxy: CursorProxy) -> Router {
+    let web_cache = registry.web_cache().router();
     Router::new()
         .route("/__byok-api__/healthz", get(health))
         .route("/agent.v1.AgentService/RunSSE", post(run_sse_handler))
@@ -80,6 +81,7 @@ fn router_with_proxy(registry: TransportRegistry, proxy: CursorProxy) -> Router 
         .method_not_allowed_fallback(proxy::forward)
         .layer(Extension(proxy))
         .with_state(registry)
+        .merge(web_cache)
 }
 
 async fn health() -> StatusCode {

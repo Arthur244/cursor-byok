@@ -235,12 +235,23 @@ pub(crate) fn complete_web_fetch(
     };
     let (output, is_error) = match outcome {
         Ok(page) => {
-            let output = page.markdown.clone();
+            let output = match page.cache.as_ref() {
+                Some(cache) => format!(
+                    "<system_reminder>Web content has been downloaded to: {}. If the content is omitted and you need it, use Shell to download it to a temporary directory, then use an appropriate tool to read it in pages.</system_reminder>\n{}",
+                    cache.url, page.markdown
+                ),
+                None => page.markdown.clone(),
+            };
+            let output_location = page.cache.map(|cache| pb::OutputLocation {
+                file_path: cache.file_path,
+                size_bytes: cache.size_bytes,
+                line_count: cache.line_count,
+            });
             tool.result = Some(pb::WebFetchResult {
                 result: Some(pb::web_fetch_result::Result::Success(pb::WebFetchSuccess {
                     url: page.url,
                     markdown: page.markdown,
-                    output_location: None,
+                    output_location,
                 })),
             });
             (output, false)
@@ -327,4 +338,76 @@ fn switch_mode_result(
 
 fn missing(name: &str) -> Error {
     Error::Protocol(format!("{name} returned no result"))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::{complete_web_fetch, PendingInteraction};
+    use crate::{
+        cursor::protocol::proto::agent::v1 as pb,
+        model::ToolCall,
+        search::{FetchedPage, WebCacheEntry},
+    };
+
+    #[test]
+    fn web_fetch_result_leads_with_cache_reminder_and_bounds_cursor_payload() {
+        let markdown = "x".repeat(40 * 1024);
+        let location = "http://127.0.0.1:4312/web-cache/550e8400-e29b-41d4-a716-446655440000.txt";
+        let completion = complete_web_fetch(
+            pending_fetch(),
+            Ok(FetchedPage {
+                url: "https://example.com/final".into(),
+                markdown: markdown.clone(),
+                cache: Some(WebCacheEntry {
+                    url: location.into(),
+                    file_path: "C:/Users/test/.cursor-byok-v3/cache/web/page.txt".into(),
+                    size_bytes: markdown.len() as i64,
+                    line_count: 1,
+                }),
+            }),
+        )
+        .unwrap();
+
+        assert!(completion.result().content.starts_with(&format!(
+            "<system_reminder>Web content has been downloaded to: {location}."
+        )));
+        assert!(completion.result().content.contains("[truncated: WebFetch"));
+        let Some(pb::tool_call::Tool::WebFetchToolCall(tool)) =
+            completion.tool_call().tool.as_ref()
+        else {
+            panic!("expected WebFetchToolCall")
+        };
+        let Some(pb::web_fetch_result::Result::Success(success)) = tool
+            .result
+            .as_ref()
+            .and_then(|result| result.result.as_ref())
+        else {
+            panic!("expected WebFetchSuccess")
+        };
+        assert!(success.markdown.len() <= 32 * 1024);
+        assert!(success.markdown.contains("[truncated: WebFetch"));
+        assert_eq!(
+            success
+                .output_location
+                .as_ref()
+                .map(|location| location.file_path.as_str()),
+            Some("C:/Users/test/.cursor-byok-v3/cache/web/page.txt")
+        );
+    }
+
+    fn pending_fetch() -> PendingInteraction {
+        PendingInteraction {
+            call: ToolCall {
+                index: 0,
+                call_id: "fetch-call".into(),
+                model_call_id: "model-call".into(),
+                name: "WebFetch".into(),
+                arguments_text: r#"{"url":"https://example.com"}"#.into(),
+                arguments: json!({"url": "https://example.com"}),
+            },
+            started_at_ms: 1,
+        }
+    }
 }
