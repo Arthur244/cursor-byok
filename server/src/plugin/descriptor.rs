@@ -71,6 +71,7 @@ pub const OAUTH2_ADD_METHOD: &str = "oauth2.0";
 pub struct PluginDescriptor {
     pub id: String,
     pub name: String,
+    pub version: String,
     pub author: Option<String>,
     pub icon: String,
     pub providers: Vec<PluginProviderDescriptor>,

@@ -21,7 +21,7 @@ icon: Blocks
         └── models-<provider>.json  # 核心持久化的模型目录
 ```
 
-内置插件位于 `server/plugins/build-in/`(如 `codex-auth`),Debug 构建自动发现;发布构建只读取 `plugins/installed/`。用户目录中存在同 ID 插件时,以用户目录为准。
+内置插件源码位于 `server/plugins/build-in/`(如 `codex-auth`),随二进制打包并按版本预装进 `plugins/installed/`;Debug 构建下源码目录优先加载,便于热改。
 
 ## 静态清单
 
@@ -30,6 +30,9 @@ icon: Blocks
   "apiVersion": 1,
   "id": "com.example.subscription",
   "name": "Example Subscription",
+  "version": "0.1.0",
+  "author": "@example",
+  "minAppVersion": "0.1.0",
   "icon": "assets/icon.svg",
   "entry": "main.ts",
   "permissions": {
@@ -38,7 +41,7 @@ icon: Blocks
 }
 ```
 
-`permissions.network` 只能包含精确主机名。所有插件网络请求都必须是 HTTPS 且命中该白名单。
+`permissions.network` 只能包含精确主机名。所有插件网络请求都必须是 HTTPS 且命中该白名单。`version` 必填;应用版本低于 `minAppVersion` 时插件会被忽略。内置插件按 `version` 预装进 `plugins/installed/`:版本一致时启动零写盘,版本变化时整目录同步并清理旧文件。
 
 ## 入口与能力
 

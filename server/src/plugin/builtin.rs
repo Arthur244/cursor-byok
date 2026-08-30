@@ -1,10 +1,10 @@
-//! Materializes built-in plugins bundled in the binary into the managed dir.
-use std::path::PathBuf;
+//! Pre-installs bundled built-in plugins into the user's installed directory.
+use std::path::Path;
 
 use super::definition::write_if_changed;
-use crate::{config, Result};
+use crate::Result;
 
-/// 随二进制打包的内置插件文件;发布构建没有源码目录,靠这里落盘。
+/// 随二进制打包的内置插件文件;发布构建没有源码目录,靠这里预装。
 const CODEX_AUTH: &[(&str, &str)] = &[
     (
         "plugin.json",
@@ -57,14 +57,42 @@ const CODEX_AUTH: &[(&str, &str)] = &[
     ),
 ];
 
-/// 把内置插件写入受管目录并返回该目录,作为插件目录的扫描根之一。
-pub(super) fn materialize() -> Result<PathBuf> {
-    let root = config::managed_data_dir()?.join("plugins/build-in");
-    write_plugin(&root.join("codex-auth"), CODEX_AUTH)?;
-    Ok(root)
+const PLUGINS: &[(&str, &[(&str, &str)])] = &[("codex-auth", CODEX_AUTH)];
+
+/// 把内置插件预装到 installed 目录。manifest 的 version 是缓存键:
+/// 版本一致时零写盘;版本变化时整目录同步并清理旧版本残留文件。
+pub(super) fn install(installed: &Path) -> Result<()> {
+    for (name, files) in PLUGINS {
+        let directory = installed.join(name);
+        if disk_version(&directory) == Some(embedded_version(files)?) {
+            continue;
+        }
+        write_plugin(&directory, files)?;
+    }
+    Ok(())
 }
 
-fn write_plugin(directory: &std::path::Path, files: &[(&str, &str)]) -> Result<()> {
+fn embedded_version(files: &[(&str, &str)]) -> Result<String> {
+    let manifest = files
+        .iter()
+        .find(|(name, _)| *name == "plugin.json")
+        .map(|(_, content)| *content)
+        .expect("built-in plugin bundles plugin.json");
+    let value: serde_json::Value = serde_json::from_str(manifest)?;
+    value
+        .get("version")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| crate::Error::Config("built-in plugin manifest requires version".into()))
+}
+
+fn disk_version(directory: &Path) -> Option<String> {
+    let manifest = std::fs::read_to_string(directory.join("plugin.json")).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&manifest).ok()?;
+    Some(value.get("version")?.as_str()?.to_owned())
+}
+
+fn write_plugin(directory: &Path, files: &[(&str, &str)]) -> Result<()> {
     for (relative, content) in files {
         let path = directory.join(relative);
         let parent = path.parent().expect("plugin file path has a parent");
@@ -81,5 +109,75 @@ fn write_plugin(directory: &std::path::Path, files: &[(&str, &str)]) -> Result<(
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
         }
     }
+    prune_unknown_files(directory, directory, files)?;
     Ok(())
+}
+
+/// 删除插件目录中不在嵌入清单里的文件与空目录(旧版本残留)。
+fn prune_unknown_files(root: &Path, directory: &Path, files: &[(&str, &str)]) -> Result<()> {
+    for entry in std::fs::read_dir(directory)? {
+        let entry = entry?;
+        let path = entry.path();
+        if entry.file_type()?.is_dir() {
+            prune_unknown_files(root, &path, files)?;
+            if std::fs::read_dir(&path)?.next().is_none() {
+                std::fs::remove_dir(&path)?;
+            }
+            continue;
+        }
+        let known = files
+            .iter()
+            .any(|(relative, _)| root.join(relative) == path);
+        if !known {
+            std::fs::remove_file(&path)?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn embedded_main() -> &'static str {
+        CODEX_AUTH
+            .iter()
+            .find(|(name, _)| *name == "main.ts")
+            .unwrap()
+            .1
+    }
+
+    #[test]
+    fn install_is_version_gated_and_syncs_on_version_change() {
+        let root = tempfile::tempdir().unwrap();
+        let plugin = root.path().join("codex-auth");
+
+        install(root.path()).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(plugin.join("main.ts")).unwrap(),
+            embedded_main()
+        );
+
+        // 版本一致:本地改动与额外文件保持原样,不发生任何写盘。
+        std::fs::write(plugin.join("main.ts"), "edited").unwrap();
+        std::fs::write(plugin.join("stale.ts"), "extra").unwrap();
+        install(root.path()).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(plugin.join("main.ts")).unwrap(),
+            "edited"
+        );
+        assert!(plugin.join("stale.ts").exists());
+
+        // 版本变化:整目录同步回嵌入内容并清理残留。
+        let manifest = std::fs::read_to_string(plugin.join("plugin.json")).unwrap();
+        let mut value: serde_json::Value = serde_json::from_str(&manifest).unwrap();
+        value["version"] = serde_json::Value::String("0.0.1".into());
+        std::fs::write(plugin.join("plugin.json"), value.to_string()).unwrap();
+        install(root.path()).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(plugin.join("main.ts")).unwrap(),
+            embedded_main()
+        );
+        assert!(!plugin.join("stale.ts").exists());
+    }
 }

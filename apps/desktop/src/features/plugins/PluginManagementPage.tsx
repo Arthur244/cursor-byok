@@ -3,11 +3,12 @@ import { api, pluginText, type PluginDescriptor, type PluginImportFile, type Plu
 import { useI18n } from "../../i18n/store";
 import { PageContent } from "../../shell/layout/PageContent";
 import { appStore, useAppStore } from "../../shared/store/appStore";
+import { ActionMenu } from "../../shared/ui/ActionMenu";
 import { Button } from "../../shared/ui/Button";
 import { Card } from "../../shared/ui/Card";
-import { Icon } from "../../shared/ui/Icon";
 import { Modal } from "../../shared/ui/Modal";
 import { useMessage } from "../../shared/ui/message";
+import { TruncatedButton } from "../../shared/ui/TruncatedButton";
 import { PluginAddPanel, PluginSettingsPanel } from "./PluginResourcePanels";
 import styles from "./PluginManagementPage.module.scss";
 
@@ -167,43 +168,93 @@ function PluginCard({ plugin, onOpen }: {
     }
   };
 
-  return <Card className={styles.pluginCard}>
-    <div className={styles.pluginCardTop}>
-      <span className={styles.pluginIcon}><Icon src={plugin.icon} size="1.75em" /></span>
-      <div className={styles.pluginIdentity}>
-        <span className={styles.pluginName}>{plugin.name}</span>
-        <span className={styles.pluginId}>{subtitle}</span>
+  return (
+    <Card className={styles.pluginCard}>
+      <div className={styles.pluginCardTop}>
+        <img className={styles.pluginIcon} src={plugin.icon} />
+        <div className={styles.pluginIdentity}>
+          <span className={styles.pluginName}>{plugin.name}</span>
+          <span className={styles.pluginId}>{subtitle}</span>
+        </div>
+        <span
+          className={`${styles.stateBadge} ${configured ? styles.stateReady : ""}`}
+        >
+          {configured ? t("已配置") : t("未配置")}
+        </span>
       </div>
-      <span className={`${styles.stateBadge} ${configured ? styles.stateReady : ""}`}>
-        {configured ? t("已配置") : t("未配置")}
-      </span>
-    </div>
-    <div className={styles.pluginMeta}>
-      <span>{t("{accounts} 个账号 · {models} 个模型", { accounts: accountCount, models: modelCount })}</span>
-      {plugin.author && <span className={styles.pluginAuthor}>{plugin.author}</span>}
-    </div>
-    <div className={styles.cardActions}>
-      <Button size="small" variant="primary" onClick={() => onOpen(plugin.id, "add")}>{t("添加账号")}</Button>
-      {configured && <Button size="small" onClick={() => onOpen(plugin.id, "settings")}>{t("账号管理")}</Button>}
-      {importResource && <Button size="small" disabled={importing} onClick={() => importInput.current?.click()}>
-        {importing ? t("正在导入…") : t("批量导入")}
-      </Button>}
-      {exportResource && <Button
-        size="small"
-        onClick={() => void api.openExternalUrl(api.pluginResourceExportUrl(ports.service_port, plugin.id, exportResource.type))}
-      >
-        {t("批量导出")}
-      </Button>}
-      {importResource && <input
-        ref={importInput}
-        type="file"
-        hidden
-        accept={importResource.import?.accept.join(",")}
-        multiple={importResource.import?.multiple ?? false}
-        onChange={(event) => void importFiles(event.target.files)}
-      />}
-    </div>
-  </Card>;
+      <div className={styles.pluginMeta}>
+        <span>
+          {t("{accounts} 个账号 · {models} 个模型", {
+            accounts: accountCount,
+            models: modelCount,
+          })}
+        </span>
+        <span className={styles.pluginAuthor}>
+          {[`v${plugin.version}`, plugin.author].filter(Boolean).join(" · ")}
+        </span>
+      </div>
+      <div className={styles.cardActions}>
+        <TruncatedButton
+          size="small"
+          variant="primary"
+          label={t("添加账号")}
+          onClick={() => onOpen(plugin.id, "add")}
+        />
+        {configured && (
+          <TruncatedButton
+            size="small"
+            label={t("账号管理")}
+            onClick={() => onOpen(plugin.id, "settings")}
+          />
+        )}
+        {(importResource || exportResource) && (
+          <span className={styles.moreAction}>
+            <ActionMenu
+              label={t("更多")}
+              items={[
+                ...(importResource
+                  ? [
+                      {
+                        id: "import",
+                        label: importing ? t("正在导入…") : t("批量导入"),
+                        disabled: importing,
+                        onSelect: () => importInput.current?.click(),
+                      },
+                    ]
+                  : []),
+                ...(exportResource
+                  ? [
+                      {
+                        id: "export",
+                        label: t("批量导出"),
+                        onSelect: () =>
+                          void api.openExternalUrl(
+                            api.pluginResourceExportUrl(
+                              ports.service_port,
+                              plugin.id,
+                              exportResource.type,
+                            ),
+                          ),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+          </span>
+        )}
+        {importResource && (
+          <input
+            ref={importInput}
+            type="file"
+            hidden
+            accept={importResource.import?.accept.join(",")}
+            multiple={importResource.import?.multiple ?? false}
+            onChange={(event) => void importFiles(event.target.files)}
+          />
+        )}
+      </div>
+    </Card>
+  );
 }
 
 function RuntimeProgressModal({ open, status, starting, onClose }: { open: boolean; status: PluginRuntimeStatus | null; starting: boolean; onClose: () => void }) {

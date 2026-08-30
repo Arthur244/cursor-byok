@@ -21,6 +21,7 @@ const MAX_ICON_BYTES: u64 = 1024 * 1024;
 pub struct PluginCatalog {
     roots: Vec<PathBuf>,
     definition_loader: PluginDefinitionLoader,
+    app_version: String,
 }
 
 #[derive(Clone)]
@@ -33,7 +34,7 @@ pub(crate) struct PluginEntry {
 }
 
 impl PluginCatalog {
-    pub fn managed() -> Result<Self> {
+    pub fn managed(app_version: String) -> Result<Self> {
         let installed = config::managed_data_dir()?.join("plugins/installed");
         fs::create_dir_all(&installed)?;
         #[cfg(unix)]
@@ -41,15 +42,21 @@ impl PluginCatalog {
             use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(&installed, fs::Permissions::from_mode(0o700))?;
         }
-        // 扫描顺序即优先级:用户安装目录 > 源码内置目录(仅 debug,便于热改)
-        // > 随二进制打包后落盘的内置目录;同 ID 时靠前的覆盖靠后的。
-        let mut roots = vec![installed];
+        // 内置插件按版本预装进 installed;版本一致时不写盘。
+        super::builtin::install(&installed)?;
+        // 扫描顺序即优先级:debug 下源码目录优先,保证内置插件热改生效;
+        // 发布构建只有 installed 一个根。
         #[cfg(debug_assertions)]
-        roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins/build-in"));
-        roots.push(super::builtin::materialize()?);
+        let roots = vec![
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins/build-in"),
+            installed,
+        ];
+        #[cfg(not(debug_assertions))]
+        let roots = vec![installed];
         Ok(Self {
             roots,
             definition_loader: PluginDefinitionLoader::managed()?,
+            app_version,
         })
     }
 
@@ -69,7 +76,14 @@ impl PluginCatalog {
             };
             directories.sort();
             for directory in directories {
-                match load_plugin(&directory, &self.definition_loader, executable).await {
+                match load_plugin(
+                    &directory,
+                    &self.definition_loader,
+                    executable,
+                    &self.app_version,
+                )
+                .await
+                {
                     Ok(entry) => {
                         if plugins.contains_key(&entry.manifest.id) {
                             tracing::warn!(plugin = %entry.manifest.id, path = %directory.display(), "ignoring duplicate plugin");
@@ -98,6 +112,7 @@ impl PluginCatalog {
                     let manifest: PluginManifest =
                         serde_json::from_slice(&fs::read(directory.join(MANIFEST_FILE_NAME))?)?;
                     manifest.validate(&directory)?;
+                    require_app_version(&manifest, &self.app_version)?;
                     let icon = icon_data_url(&directory, &manifest.icon)?;
                     Ok((manifest, icon))
                 })();
@@ -126,14 +141,30 @@ fn child_directories(root: &Path) -> Result<Vec<PathBuf>> {
     Ok(directories)
 }
 
+/// 应用过旧时拒绝加载,让插件的 minAppVersion 声明生效。
+fn require_app_version(manifest: &PluginManifest, app_version: &str) -> Result<()> {
+    let Some(minimum) = &manifest.min_app_version else {
+        return Ok(());
+    };
+    if super::manifest::version_at_least(app_version, minimum) {
+        return Ok(());
+    }
+    Err(Error::Config(format!(
+        "plugin '{}' requires app version {minimum} or newer (current {app_version})",
+        manifest.id
+    )))
+}
+
 async fn load_plugin(
     directory: &Path,
     loader: &PluginDefinitionLoader,
     executable: &Path,
+    app_version: &str,
 ) -> Result<PluginEntry> {
     let manifest: PluginManifest =
         serde_json::from_slice(&fs::read(directory.join(MANIFEST_FILE_NAME))?)?;
     manifest.validate(directory)?;
+    require_app_version(&manifest, app_version)?;
     let icon = icon_data_url(directory, &manifest.icon)?;
     let entry = directory.join(&manifest.entry).canonicalize()?;
     let definition = loader.load(executable, directory, &entry).await?;
@@ -279,6 +310,7 @@ mod tests {
         let catalog = PluginCatalog {
             roots: vec![root],
             definition_loader: PluginDefinitionLoader::for_test(sdk.path()).unwrap(),
+            app_version: env!("CARGO_PKG_VERSION").into(),
         };
         assert!(!catalog.manifests().is_empty());
     }

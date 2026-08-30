@@ -2,10 +2,10 @@ import type { IconifyIcon } from "@iconify/react/offline";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Sortable from "sortablejs";
 import type { Model, PluginModelDescriptor } from "../../shared/api";
-import { Button } from "../../shared/ui/Button";
 import { Card } from "../../shared/ui/Card";
 import { Icon } from "../../shared/ui/Icon";
 import { chevronDownIcon, chevronRightIcon, claudeIcon, dragIcon, flatColorOrganizationIcon, openAiIcon } from "../../shared/ui/icons";
+import { TruncatedButton } from "../../shared/ui/TruncatedButton";
 import { CursorModelTestResult, type CursorModelTestState } from "./CursorModelTestResult";
 import styles from "./CursorSettings.module.scss";
 
@@ -147,10 +147,10 @@ function ModelListRow({ model, disabled, testing, result, onTest, onEdit, onDupl
     </div>
     <CursorModelTestResult compact state={result} testing={testing} />
     <div className={styles.modelCardActions}>
-      <Button size="small" disabled={disabled && !testing} onClick={onTest}>{testing ? t("取消测试") : t("测试")}</Button>
-      <Button size="small" disabled={disabled} onClick={onEdit}>{t("编辑")}</Button>
-      <Button size="small" disabled={disabled} onClick={onDuplicate}>{t("复制")}</Button>
-      <Button size="small" className={styles.deleteButton} disabled={disabled} onClick={onDelete}>{t("删除")}</Button>
+      <TruncatedButton size="small" disabled={disabled && !testing} label={testing ? t("取消测试") : t("测试")} onClick={onTest} />
+      <TruncatedButton size="small" disabled={disabled} label={t("编辑")} onClick={onEdit} />
+      <TruncatedButton size="small" disabled={disabled} label={t("复制")} onClick={onDuplicate} />
+      <TruncatedButton size="small" className={styles.deleteButton} disabled={disabled} label={t("删除")} onClick={onDelete} />
     </div>
   </div>;
 }
@@ -170,8 +170,8 @@ function PluginModelRow({ model, disabled, testing, result, onTest, onSettings }
     </div>
     <CursorModelTestResult compact state={result} testing={testing} />
     <div className={styles.modelCardActions}>
-      <Button size="small" disabled={disabled && !testing} onClick={onTest}>{testing ? t("取消测试") : t("测试")}</Button>
-      <Button size="small" disabled={disabled} onClick={onSettings}>{t("设置")}</Button>
+      <TruncatedButton size="small" disabled={disabled && !testing} label={testing ? t("取消测试") : t("测试")} onClick={onTest} />
+      <TruncatedButton size="small" disabled={disabled} label={t("设置")} onClick={onSettings} />
     </div>
   </div>;
 }
@@ -261,10 +261,10 @@ function ModelGrid({
             <CursorModelTestResult state={result} testing={testing} />
           </div>
           <div className={styles.modelCardActions}>
-            <Button size="small" disabled={disabled && !testing} onClick={() => onTest(model)}>{testing ? t("取消测试") : t("测试")}</Button>
-            <Button size="small" disabled={disabled} onClick={() => onEdit(model)}>{t("编辑")}</Button>
-            <Button size="small" disabled={disabled} onClick={() => onDuplicate(model)}>{t("复制")}</Button>
-            <Button size="small" className={styles.deleteButton} disabled={disabled} onClick={() => onDelete(model)}>{t("删除")}</Button>
+            <TruncatedButton size="small" disabled={disabled && !testing} label={testing ? t("取消测试") : t("测试")} onClick={() => onTest(model)} />
+            <TruncatedButton size="small" disabled={disabled} label={t("编辑")} onClick={() => onEdit(model)} />
+            <TruncatedButton size="small" disabled={disabled} label={t("复制")} onClick={() => onDuplicate(model)} />
+            <TruncatedButton size="small" className={styles.deleteButton} disabled={disabled} label={t("删除")} onClick={() => onDelete(model)} />
           </div>
         </div>
       </Card>;

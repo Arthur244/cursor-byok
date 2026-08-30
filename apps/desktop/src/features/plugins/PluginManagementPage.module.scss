@@ -31,9 +31,9 @@
   justify-content: center;
   width: 42px;
   height: 42px;
-  background: var(--vscode-list-hoverBackground);
-  border: 1px solid var(--vscode-sideBar-border);
+
   border-radius: 10px;
+
 }
 
 .pluginIdentity {
@@ -98,8 +98,21 @@
 .cardActions {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 7px;
+
+  > button {
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+}
+
+
+// 主操作靠左,"更多"推到行尾,两端对齐。
+.moreAction {
+  display: flex;
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .gate,

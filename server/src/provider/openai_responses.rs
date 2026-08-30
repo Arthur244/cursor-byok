@@ -14,11 +14,8 @@ use crate::{
 };
 
 use super::{
-<<<<<<< HEAD
-    apply_body_allowlist, apply_openai_prompt_cache_key, merge_extra_params,
-=======
-    apply_openai_prompt_cache_key, map_sse_error, merge_extra_params, provider_event_error,
->>>>>>> main
+    apply_body_allowlist, apply_openai_prompt_cache_key, map_sse_error, merge_extra_params,
+    provider_event_error,
     recorder::recorded_headers,
     retry::{send_with_retry, Attempt, RetryPolicy},
     CallRecorder, FinishReason, ModelEvent, Provider, ProviderStream,

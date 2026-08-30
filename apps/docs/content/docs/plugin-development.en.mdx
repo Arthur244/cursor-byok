@@ -21,7 +21,7 @@ Plugins implement three capability interfaces defined by the core: **Provider** 
         └── models-<provider>.json  # model catalogs persisted by the core
 ```
 
-Built-in plugins live at `server/plugins/build-in/` (such as `codex-auth`); debug builds discover them automatically, while release builds only read `plugins/installed/`. When the user directory contains a plugin with the same ID, the user directory wins.
+Built-in plugin sources live at `server/plugins/build-in/` (such as `codex-auth`); they are bundled into the binary and pre-installed into `plugins/installed/` keyed by version. Debug builds load the source directory first so edits take effect immediately.
 
 ## Static manifest
 
@@ -30,6 +30,9 @@ Built-in plugins live at `server/plugins/build-in/` (such as `codex-auth`); debu
   "apiVersion": 1,
   "id": "com.example.subscription",
   "name": "Example Subscription",
+  "version": "0.1.0",
+  "author": "@example",
+  "minAppVersion": "0.1.0",
   "icon": "assets/icon.svg",
   "entry": "main.ts",
   "permissions": {
@@ -38,7 +41,7 @@ Built-in plugins live at `server/plugins/build-in/` (such as `codex-auth`); debu
 }
 ```
 
-`permissions.network` accepts exact hostnames only. All plugin network requests must use HTTPS and hit this allowlist.
+`permissions.network` accepts exact hostnames only. All plugin network requests must use HTTPS and hit this allowlist. `version` is required; the plugin is ignored when the app version is older than `minAppVersion`. Built-in plugins are pre-installed into `plugins/installed/` keyed by `version`: startup writes nothing when the version matches and resyncs the whole directory (pruning stale files) when it changes.
 
 ## Entry and capabilities
 

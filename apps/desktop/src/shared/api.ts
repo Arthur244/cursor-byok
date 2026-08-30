@@ -254,6 +254,7 @@ export interface PluginProviderDescriptor {
 export interface PluginDescriptor {
   id: string;
   name: string;
+  version: string;
   author: string | null;
   icon: string;
   providers: PluginProviderDescriptor[];

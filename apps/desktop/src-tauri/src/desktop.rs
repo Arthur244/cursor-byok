@@ -175,7 +175,12 @@ pub fn run() -> ExitCode {
                 tauri_plugin_autostart::MacosLauncher::LaunchAgent,
                 Some(vec![AUTOSTART_ARG]),
             ))?;
-            let config = Config::desktop()?;
+            let config = {
+                let mut config = Config::desktop()?;
+                // 插件的 minAppVersion 按桌面应用版本判定,而不是内嵌 server 库的版本。
+                config.app_version = env!("CARGO_PKG_VERSION").into();
+                config
+            };
             #[cfg(dev)]
             let config = {
                 let mut config = config;

@@ -97,13 +97,13 @@ pub struct PluginInvocationPlan {
 }
 
 impl PluginRegistry {
-    pub fn managed(store: Store, runtime: PluginRuntime) -> Result<Self> {
+    pub fn managed(store: Store, runtime: PluginRuntime, app_version: String) -> Result<Self> {
         let data = PluginDataStore::managed()?;
         Ok(Self {
             inner: Arc::new(RegistryInner {
                 store,
                 runtime,
-                catalog: PluginCatalog::managed()?,
+                catalog: PluginCatalog::managed(app_version)?,
                 state: PluginStateStore::new(data),
                 entries: RwLock::new(None),
                 workers: Mutex::new(HashMap::new()),
@@ -122,6 +122,7 @@ impl PluginRegistry {
                 .map(|(manifest, icon)| PluginDescriptor {
                     id: manifest.id,
                     name: manifest.name,
+                    version: manifest.version,
                     author: manifest.author,
                     icon,
                     providers: Vec::new(),
@@ -625,6 +626,7 @@ impl PluginRegistry {
         PluginDescriptor {
             id: plugin_id.clone(),
             name: entry.manifest.name.clone(),
+            version: entry.manifest.version.clone(),
             author: entry.manifest.author.clone(),
             icon: entry.icon.clone(),
             providers,

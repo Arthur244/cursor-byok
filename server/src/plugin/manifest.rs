@@ -14,8 +14,13 @@ pub struct PluginManifest {
     pub api_version: u32,
     pub id: String,
     pub name: String,
+    /// 插件自身版本;内置插件预装时以它为缓存键决定是否重新落盘。
+    pub version: String,
     #[serde(default)]
     pub author: Option<String>,
+    /// 插件要求的最低应用版本;应用过旧时插件被忽略。
+    #[serde(default)]
+    pub min_app_version: Option<String>,
     pub icon: String,
     pub entry: String,
     #[serde(default)]
@@ -39,6 +44,12 @@ impl PluginManifest {
         }
         validate_id(&self.id, "plugin id")?;
         required(&self.name, "plugin name")?;
+        parse_version(&self.version)
+            .ok_or_else(|| Error::Config(format!("invalid plugin version: {}", self.version)))?;
+        if let Some(minimum) = &self.min_app_version {
+            parse_version(minimum)
+                .ok_or_else(|| Error::Config(format!("invalid plugin minAppVersion: {minimum}")))?;
+        }
         validate_entry_path(directory, &self.entry)?;
         validate_asset_path(directory, &self.icon)?;
         let mut hosts = HashSet::new();
@@ -52,6 +63,23 @@ impl PluginManifest {
             }
         }
         Ok(())
+    }
+}
+
+/// 解析 semver 的核心三段(忽略预发布/构建后缀),格式非法返回 None。
+pub(super) fn parse_version(value: &str) -> Option<(u64, u64, u64)> {
+    let core = value.split(['-', '+']).next()?;
+    let mut parts = core.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next()?.parse().ok()?;
+    parts.next().is_none().then_some((major, minor, patch))
+}
+
+pub(super) fn version_at_least(actual: &str, minimum: &str) -> bool {
+    match (parse_version(actual), parse_version(minimum)) {
+        (Some(actual), Some(minimum)) => actual >= minimum,
+        _ => false,
     }
 }
 
@@ -171,5 +199,15 @@ mod tests {
         assert!(validate_network_host("https://example.com").is_err());
         assert!(validate_network_host("example.com:443").is_err());
         assert!(validate_network_host("example.com").is_ok());
+    }
+
+    #[test]
+    fn compares_semver_cores_and_ignores_prerelease_suffixes() {
+        assert_eq!(parse_version("0.1.5-beta.1"), Some((0, 1, 5)));
+        assert_eq!(parse_version("1.2"), None);
+        assert!(version_at_least("0.1.5-beta.1", "0.1.5"));
+        assert!(version_at_least("0.2.0", "0.1.9"));
+        assert!(!version_at_least("0.1.4", "0.1.5"));
+        assert!(!version_at_least("bogus", "0.1.0"));
     }
 }

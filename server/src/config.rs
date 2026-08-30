@@ -58,6 +58,8 @@ pub struct Config {
     pub provider_stream_idle_timeout: Duration,
     pub console: Option<ConsoleSource>,
     pub use_persisted_ports: bool,
+    /// 面向用户的应用版本;桌面壳会覆盖为自身版本,用于插件 minAppVersion 门控。
+    pub app_version: String,
 }
 
 #[derive(Clone)]
@@ -109,6 +111,7 @@ impl Config {
             provider_stream_idle_timeout: DEFAULT_PROVIDER_STREAM_IDLE_TIMEOUT,
             console,
             use_persisted_ports: false,
+            app_version: env!("CARGO_PKG_VERSION").into(),
         })
     }
 
@@ -122,6 +125,7 @@ impl Config {
             provider_stream_idle_timeout: DEFAULT_PROVIDER_STREAM_IDLE_TIMEOUT,
             console: None,
             use_persisted_ports: true,
+            app_version: env!("CARGO_PKG_VERSION").into(),
         })
     }
 }
