@@ -39,12 +39,15 @@ impl PluginDataStore {
         let path = self.path(plugin_id, key)?;
         let lock = self.lock(plugin_id);
         let _guard = lock.lock().await;
-        match tokio::fs::read(path).await {
+        match tokio::fs::read(&path).await {
             Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 Ok(serde_json::Value::Null)
             }
-            Err(error) => Err(error.into()),
+            Err(error) => Err(Error::Config(format!(
+                "plugin data read failed at {}: {error}",
+                path.display()
+            ))),
         }
     }
 
@@ -57,6 +60,18 @@ impl PluginDataStore {
         let path = self.path(plugin_id, key)?;
         let lock = self.lock(plugin_id);
         let _guard = lock.lock().await;
+        self.write_locked(&path, key, value)
+            .await
+            // 带上具体路径,Windows 上的拒绝访问才能定位到是哪一步。
+            .map_err(|error| {
+                Error::Config(format!(
+                    "plugin data write failed at {}: {error}",
+                    path.display()
+                ))
+            })
+    }
+
+    async fn write_locked(&self, path: &Path, key: &str, value: &serde_json::Value) -> Result<()> {
         let directory = path.parent().expect("plugin data path has a parent");
         tokio::fs::create_dir_all(directory).await?;
         set_directory_permissions(directory)?;
@@ -70,8 +85,8 @@ impl PluginDataStore {
             .await?;
         file.sync_all().await?;
         drop(file);
-        replace_file(&temporary, &path).await?;
-        set_file_permissions(&path)?;
+        replace_file(&temporary, path).await?;
+        set_file_permissions(path)?;
         Ok(())
     }
 
@@ -80,10 +95,13 @@ impl PluginDataStore {
         let lock = self.lock(plugin_id);
         let _guard = lock.lock().await;
         let path = self.root.join(plugin_id);
-        match tokio::fs::remove_dir_all(path).await {
+        match tokio::fs::remove_dir_all(&path).await {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(error.into()),
+            Err(error) => Err(Error::Config(format!(
+                "plugin data cleanup failed at {}: {error}",
+                path.display()
+            ))),
         }
     }
 
@@ -117,16 +135,24 @@ async fn replace_file(temporary: &Path, path: &Path) -> Result<()> {
             match tokio::fs::rename(temporary, path).await {
                 Ok(()) => return Ok(()),
                 Err(error)
-                    if attempts < 10
+                    if attempts < 20
                         && matches!(
                             error.raw_os_error(),
                             Some(ACCESS_DENIED | SHARING_VIOLATION)
                         ) =>
                 {
                     attempts += 1;
-                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                 }
-                Err(error) => return Err(error.into()),
+                Err(error) => {
+                    tracing::warn!(
+                        path = %path.display(),
+                        attempts,
+                        %error,
+                        "plugin data file replacement failed"
+                    );
+                    return Err(error.into());
+                }
             }
         }
     }

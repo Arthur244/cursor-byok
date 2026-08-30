@@ -250,7 +250,12 @@ impl PluginWorker {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
-        let mut child = command.spawn()?;
+        let mut child = command.spawn().map_err(|error| {
+            Error::Config(format!(
+                "cannot start plugin worker {}: {error}",
+                self.inner.executable.display()
+            ))
+        })?;
         let stdin =
             Arc::new(Mutex::new(child.stdin.take().ok_or_else(|| {
                 Error::Config("cannot open plugin worker stdin".into())
