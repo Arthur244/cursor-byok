@@ -651,54 +651,7 @@ store     ─X→ cursor
 model     ─X→ cursor
 ```
 
-## 当前代码迁移
 
-```text
-当前                                      目标
-
-cursor/bidi_append.rs                  → api/cursor/bidi.rs
-cursor/run_sse.rs                      → api/cursor/run_sse.rs
-cursor/handlers.rs                     → api/cursor/handlers.rs
-cursor/proxy.rs                        → api/cursor/proxy.rs
-
-cursor/sessions.rs                     → cursor/transport/registry.rs
-                                       + cursor/transport/handle.rs
-                                       + cursor/transport/output.rs
-
-cursor/inbox.rs                        → cursor/transport/inbox.rs
-
-cursor/actor.rs                        → cursor/transport/
-                                       + cursor/conversation/runtime.rs
-                                       + cursor/conversation/delivery.rs
-
-cursor/session.rs                      → cursor/conversation/runtime.rs
-                                       + cursor/conversation/output.rs
-                                       + cursor/checkpoint/
-                                       + cursor/tools/
-
-cursor/request/prepare.rs              → cursor/compile/run.rs
-cursor/request/context.rs              → cursor/compile/context.rs
-cursor/request/background.rs           → cursor/compile/insert_messages.rs
-cursor/request/runtime.rs              → cursor/compile/break_messages.rs
-cursor/request/images.rs               → cursor/compile/images.rs
-cursor/request/model.rs                → cursor/compile/model.rs
-
-cursor/interaction/mod.rs              → cursor/protocol/events.rs
-cursor/interaction/query.rs            → cursor/tools/codec/query.rs
-cursor/interaction/render.rs           → cursor/tools/codec/render.rs
-
-cursor/projection/decode.rs            → cursor/checkpoint/messages/decode.rs
-cursor/projection/encode.rs            → cursor/checkpoint/messages/encode.rs
-cursor/projection/tests.rs             → cursor/checkpoint/messages/tests.rs
-
-cursor/presentation.rs                 → cursor/checkpoint/steps.rs
-
-run/runtime.rs RunRegistry             → cursor/conversation/registry.rs
-run/runtime.rs RunActor                → run/engine.rs + run/handle.rs
-run/port.rs                            → run/command.rs + run/event.rs + run/port.rs
-
-store/revisions.rs                     → store/checkpoints.rs
-```
 
 
 ## 最终核心
