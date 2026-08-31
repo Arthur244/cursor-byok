@@ -161,6 +161,10 @@ fn is_local_path(path: &str) -> bool {
             | "/aiserver.v1.DashboardService/GetUserProfile"
             | "/aiserver.v1.DashboardService/GetCurrentPeriodUsage"
             | "/aiserver.v1.DashboardService/GetUsageLimitStatusAndActiveGrants"
+            | "/aiserver.v1.AiService/KnowledgeBaseAdd"
+            | "/aiserver.v1.AiService/KnowledgeBaseList"
+            | "/aiserver.v1.AiService/KnowledgeBaseUpdate"
+            | "/aiserver.v1.AiService/KnowledgeBaseRemove"
             | "/aiserver.v1.AnalyticsService/BootstrapStatsig"
             | "/auth/full_stripe_profile"
     )

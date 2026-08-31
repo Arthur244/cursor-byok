@@ -2,9 +2,7 @@
 
 use std::collections::HashSet;
 
-use crate::model::{
-    CanonicalMessage, LlmCallUsageAnchor, PreparedRun, ProjectedMessage, RunAction,
-};
+use crate::model::{CanonicalMessage, LlmCallUsageAnchor, PreparedRun, ProjectedMessage};
 
 const FALLBACK_CHARS: usize = 12_000;
 
@@ -34,9 +32,6 @@ pub(super) fn should_compact(
     projected_messages: &[ProjectedMessage],
     anchor: Option<ContextUsageAnchor>,
 ) -> bool {
-    if prepared.action != RunAction::Start {
-        return false;
-    }
     let Some(context_window) = prepared.model.context_window_tokens else {
         return false;
     };
@@ -113,15 +108,15 @@ fn estimate_serialized_tokens(serialized: &str) -> u64 {
 mod tests {
     use super::*;
     use crate::model::{
-        project_messages, CheckpointId, ConversationId, ModelSpec, Origin, PromptSpec, Role, RunId,
-        RunKind,
+        project_messages, CheckpointId, ConversationId, ModelSpec, Origin, PromptSpec, Role,
+        RunAction, RunId, RunKind,
     };
 
     #[test]
-    fn automatic_compaction_starts_only_after_the_context_window_is_exceeded() {
+    fn automatic_compaction_runs_for_start_and_resume_actions_after_the_limit() {
         let mut model = ModelSpec::new("model");
         model.context_window_tokens = Some(200_000);
-        let prepared = PreparedRun {
+        let mut prepared = PreparedRun {
             run_id: RunId::new("run"),
             cursor_request_id: None,
             conversation_id: ConversationId::new("conversation"),
@@ -163,6 +158,16 @@ mod tests {
             &projected,
             anchor(200_000)
         ));
+        assert!(should_compact(
+            &prepared,
+            &messages,
+            &projected,
+            anchor(200_001)
+        ));
+
+        prepared.action = RunAction::Resume {
+            pending_tool_round: None,
+        };
         assert!(should_compact(
             &prepared,
             &messages,

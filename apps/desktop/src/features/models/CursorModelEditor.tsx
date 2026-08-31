@@ -12,6 +12,7 @@ import { CursorPresetChips } from "./CursorPresetChips";
 import styles from "./CursorSettings.module.scss";
 
 export type CursorModelDraft = {
+  providerId: string;
   model: ModelInput;
   openAIExtraParamsText: string;
   customHeadersText: string;
@@ -19,9 +20,11 @@ export type CursorModelDraft = {
 };
 
 export const emptyCursorModelDraft = (): CursorModelDraft => ({
+  providerId: "builtin/openai",
   model: {
     sort_order: 0,
     display_name: "",
+    group_name: null,
     type: "openai",
     base_url: "",
     use_full_url: false,
@@ -63,6 +66,7 @@ export function CursorModelEditor({ draft, modelOptions, discovering, onChange, 
     const endpoint = preset ? presetEndpoint(preset, type) : null;
     onChange({
       ...draft,
+      providerId: `builtin/${type}`,
       model: {
         ...draft.model,
         type,
@@ -123,13 +127,19 @@ export function CursorModelEditor({ draft, modelOptions, discovering, onChange, 
       ? "https://api.anthropic.com"
       : "https://api.openai.com";
 
+  const providerOptions = [
+    { value: "builtin/openai", label: "OpenAI", icon: openAiIcon },
+    { value: "builtin/anthropic", label: "Anthropic", icon: claudeIcon },
+  ];
+  const setProvider = (providerId: string) => {
+    if (providerId === "builtin/openai") setType("openai");
+    if (providerId === "builtin/anthropic") setType("anthropic");
+  };
+
   return <div className={styles.editor}>
     <CursorPresetChips type={draft.model.type} baseUrl={draft.model.base_url} onPick={applyPreset} />
     <div className={styles.grid}>
-      <FormField label={t("模型类型")}><Select ariaLabel={t("模型类型")} value={draft.model.type} options={[
-        { value: "openai", label: "OpenAI", icon: openAiIcon },
-        { value: "anthropic", label: "Anthropic", icon: claudeIcon },
-      ]} onChange={(value) => setType(value as ModelType)} /></FormField>
+      <FormField label={t("模型类型")}><Select ariaLabel={t("模型类型")} value={draft.providerId} options={providerOptions} onChange={setProvider} /></FormField>
       {draft.model.type === "openai" && <FormField label={t("请求协议")} hint={t("只决定请求与响应的格式，不会改变请求地址。")}> <Select ariaLabel={t("请求协议")} value={draft.model.openai_endpoint} options={[
         { value: "/v1/responses", label: "Responses API" },
         { value: "/v1/chat/completions", label: "Chat Completions API" },

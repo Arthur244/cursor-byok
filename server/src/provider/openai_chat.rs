@@ -17,7 +17,8 @@ use crate::{
 };
 
 use super::{
-    apply_openai_prompt_cache_key, merge_extra_params,
+    apply_body_allowlist, apply_openai_prompt_cache_key, map_sse_error, merge_extra_params,
+    provider_event_error,
     recorder::recorded_headers,
     retry::{send_with_retry, Attempt, RetryPolicy},
     CallRecorder, FinishReason, ModelEvent, Provider, ProviderStream,
@@ -86,6 +87,7 @@ impl Provider for OpenAiChatProvider {
             apply_model(&mut body, &request.model, config.max_output_tokens)?;
             merge_extra_params(&mut body, &request.model.extra_params)?;
             apply_openai_prompt_cache_key(&mut body, &request.model.model_id)?;
+            apply_body_allowlist(&mut body, config.allowed_body_fields.as_ref())?;
             let request_headers = recorded_headers(&config, &[("content-type", "application/json")]);
             if let Some(recorder) = &recorder {
                 recorder.request(request_headers.clone(), &body).await?;
@@ -94,7 +96,7 @@ impl Provider for OpenAiChatProvider {
                 "OpenAI Chat",
                 || client.post(&config.request_url)
                     .bearer_auth(&config.api_key).headers(config.custom_headers.clone()).json(&body),
-                RetryPolicy::default(),
+                RetryPolicy { retries: config.retry_count, ..RetryPolicy::default() },
                 &cancellation,
                 recorder.as_ref(),
                 request_headers,
@@ -146,12 +148,14 @@ impl Provider for OpenAiChatProvider {
                     break;
                 };
                 let event = event.map_err(|error| {
-                    let err_msg = error.to_string();
                     tracing::debug!(iteration = loop_iteration, error = %error, "OpenAI Chat SSE event failed");
-                    Error::Provider(format!("OpenAI Chat SSE: {err_msg}"))
+                    map_sse_error("OpenAI Chat", error)
                 })?;
                 if event.data == "[DONE]" { saw_done_marker = true; break; }
                 let value: Value = serde_json::from_str(&event.data)?;
+                if let Some(error) = provider_event_error("OpenAI Chat", &value) {
+                    Err(error)?;
+                }
                 if let Some(usage) = value.get("usage").filter(|value| !value.is_null()) {
                     final_usage = Some(openai_usage(usage));
                 }

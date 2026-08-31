@@ -343,7 +343,14 @@ impl ConversationOutput {
                         let call = calls.get_mut(&index).ok_or_else(|| {
                             Error::Protocol(format!("unknown completed tool index: {index}"))
                         })?;
-                        call.arguments = serde_json::from_str(&call.arguments_text)?;
+                        // A tool call with no arguments streams no argument text.
+                        // Treat empty text as an empty object, matching the model
+                        // cycle, instead of failing the run on `from_str("")`.
+                        call.arguments = if call.arguments_text.trim().is_empty() {
+                            serde_json::json!({})
+                        } else {
+                            serde_json::from_str(&call.arguments_text)?
+                        };
                     }
                     RunEvent::Usage(usage) => {
                         if !self.context.compacting {

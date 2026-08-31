@@ -158,6 +158,7 @@ fn model_input(model: LegacyModel) -> Result<ModelConfigInput> {
     Ok(ModelConfigInput {
         sort_order: model.sort,
         display_name: model.display_name.clone(),
+        group_name: None,
         model_type,
         base_url,
         use_full_url,

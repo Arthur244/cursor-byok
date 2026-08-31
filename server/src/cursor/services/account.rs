@@ -254,7 +254,7 @@ async fn forward_or(
     match proxy::forward_buffered(&upstream, request).await {
         Ok(response) if response.status.is_success() => Ok(response.into_response()),
         Ok(response) => {
-            tracing::warn!(status = %response.status, "Cursor identity upstream rejected request; using local identity");
+            tracing::debug!(status = %response.status, "Cursor identity upstream rejected request; using local identity");
             fallback()
         }
         Err(error) => {

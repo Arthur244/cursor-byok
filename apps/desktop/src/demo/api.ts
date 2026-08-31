@@ -185,6 +185,7 @@ function createModel({ hash, order, name, type, url, modelId, endpoint = "/v1/re
     model_hash: hash,
     sort_order: order,
     display_name: name,
+    group_name: null,
     type,
     base_url: url,
     use_full_url: false,

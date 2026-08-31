@@ -170,7 +170,7 @@ impl RunEngine {
                 Ok(messages) => messages,
                 Err(error) => return (RunOutcome::Failed(error.into()), usage),
             };
-            let context_anchor = if !auto_compacted && prepared.action == RunAction::Start {
+            let context_anchor = if !auto_compacted {
                 match self
                     .store
                     .latest_llm_call_usage_anchor(

@@ -18,6 +18,9 @@ pub enum ProviderType {
     OpenAiResponses,
     #[serde(rename = "anthropic")]
     Anthropic,
+    /// 插件执行的调用;协议细节在插件内部,核心只按统一事件流记录。
+    #[serde(rename = "plugin")]
+    Plugin,
 }
 
 impl ProviderType {
@@ -26,6 +29,7 @@ impl ProviderType {
             Self::OpenAiChat => "openai-chat",
             Self::OpenAiResponses => "openai-responses",
             Self::Anthropic => "anthropic",
+            Self::Plugin => "plugin",
         }
     }
 }
@@ -44,6 +48,7 @@ impl FromStr for ProviderType {
             "openai-chat" => Ok(Self::OpenAiChat),
             "openai-responses" => Ok(Self::OpenAiResponses),
             "anthropic" => Ok(Self::Anthropic),
+            "plugin" => Ok(Self::Plugin),
             _ => Err(Error::Config(format!("unsupported provider type: {value}"))),
         }
     }
@@ -82,6 +87,9 @@ pub struct ModelConfigInput {
     #[serde(default)]
     pub sort_order: i64,
     pub display_name: String,
+    /// 供应商分组的自定义显示名;同一 base_url 主机下的模型共享。
+    #[serde(default)]
+    pub group_name: Option<String>,
     #[serde(rename = "type")]
     pub model_type: ModelType,
     pub base_url: String,
@@ -119,6 +127,7 @@ pub struct ModelConfig {
     pub model_hash: String,
     pub sort_order: i64,
     pub display_name: String,
+    pub group_name: Option<String>,
     #[serde(rename = "type")]
     pub model_type: ModelType,
     pub base_url: String,
@@ -199,6 +208,12 @@ impl ModelConfig {
 
 pub fn normalize_model_input(input: &ModelConfigInput) -> Result<ModelConfigInput> {
     let display_name = required(&input.display_name, "model display name")?;
+    let group_name = input
+        .group_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(String::from);
     let base_url = normalize_request_url(&input.base_url)?;
     let api_key = required(&input.api_key, "model API key")?;
     let tooltip_data = required(&input.tooltip_data, "model tooltip")?;
@@ -225,6 +240,7 @@ pub fn normalize_model_input(input: &ModelConfigInput) -> Result<ModelConfigInpu
     let normalized = ModelConfigInput {
         sort_order: input.sort_order.max(0),
         display_name,
+        group_name,
         model_type: input.model_type,
         base_url,
         use_full_url: input.use_full_url,

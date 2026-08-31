@@ -1,11 +1,11 @@
 import type { IconifyIcon } from "@iconify/react/offline";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Sortable from "sortablejs";
-import type { Model } from "../../shared/api";
-import { Button } from "../../shared/ui/Button";
+import type { Model, PluginModelDescriptor } from "../../shared/api";
 import { Card } from "../../shared/ui/Card";
 import { Icon } from "../../shared/ui/Icon";
-import { claudeIcon, dragIcon, flatColorOrganizationIcon, openAiIcon } from "../../shared/ui/icons";
+import { chevronDownIcon, chevronRightIcon, claudeIcon, dragIcon, flatColorOrganizationIcon, openAiIcon } from "../../shared/ui/icons";
+import { TruncatedButton } from "../../shared/ui/TruncatedButton";
 import { CursorModelTestResult, type CursorModelTestState } from "./CursorModelTestResult";
 import styles from "./CursorSettings.module.scss";
 
@@ -20,6 +20,7 @@ export type CursorModelGroup = {
 
 type CursorModelCardsProps = {
   models: Model[];
+  pluginModels: PluginModelDescriptor[];
   grouping: CursorModelGrouping;
   disabled: boolean;
   testingModelHashes: Set<string>;
@@ -28,10 +29,13 @@ type CursorModelCardsProps = {
   onEdit: (model: Model) => void;
   onDuplicate: (model: Model) => void;
   onDelete: (model: Model) => void;
+  onTestPluginModel: (model: PluginModelDescriptor) => void;
+  onPluginSettings: (model: PluginModelDescriptor) => void;
   onReorder: (modelHashes: string[]) => void;
+  onGroupSettings: (group: CursorModelGroup) => void;
 };
 
-type ModelGridProps = Omit<CursorModelCardsProps, "grouping"> & {
+type ModelGridProps = Omit<CursorModelCardsProps, "grouping" | "pluginModels" | "onTestPluginModel" | "onPluginSettings"> & {
   sortable: boolean;
 };
 
@@ -50,18 +54,139 @@ export function cursorModelGroups(models: Model[], grouping: Exclude<CursorModel
 }
 
 export function CursorModelCards(props: CursorModelCardsProps) {
-  if (props.grouping === "flat") return <div style={{ paddingTop: "10px" }}>
-    <ModelGrid {...props} sortable />
-  </div>;
-
+  const builtins = props.grouping === "flat"
+    ? <div style={{ paddingTop: "10px" }}><ModelGrid {...props} sortable /></div>
+    : <div className={styles.modelGroups}>
+      {cursorModelGroups(props.models, props.grouping).map((group) => <CollapsibleGroup
+        key={group.key}
+        label={group.label}
+        icon={group.icon}
+        onSettings={props.grouping === "provider" ? () => props.onGroupSettings(group) : undefined}
+      >
+        {group.models.map((model) => <ModelListRow
+          key={model.model_hash}
+          model={model}
+          disabled={props.disabled}
+          testing={props.testingModelHashes.has(model.model_hash)}
+          result={props.testResults.get(model.model_hash)}
+          onTest={() => props.onTest(model)}
+          onEdit={() => props.onEdit(model)}
+          onDuplicate={() => props.onDuplicate(model)}
+          onDelete={() => props.onDelete(model)}
+        />)}
+      </CollapsibleGroup>)}
+    </div>;
   return <div className={styles.modelGroups}>
-    {cursorModelGroups(props.models, props.grouping).map((group) => <section className={styles.modelGroup} key={group.key}>
-      <div className={styles.modelGroupHeader}>
-        <Icon icon={group.icon} size="1.1em" />
-        <span>{group.label}</span>
-      </div>
-      <ModelGrid {...props} models={group.models} sortable={false} />
-    </section>)}
+    {builtins}
+    {pluginGroups(props.pluginModels).map((group) => <CollapsibleGroup
+      key={group.pluginId}
+      label={group.pluginName}
+      iconSrc={group.icon}
+    >
+      {group.models.map((model) => <PluginModelRow
+        key={model.id}
+        model={model}
+        disabled={props.disabled}
+        testing={props.testingModelHashes.has(model.id)}
+        result={props.testResults.get(model.id)}
+        onTest={() => props.onTestPluginModel(model)}
+        onSettings={() => props.onPluginSettings(model)}
+      />)}
+    </CollapsibleGroup>)}
+  </div>;
+}
+
+function pluginGroups(models: PluginModelDescriptor[]) {
+  const groups: { pluginId: string; pluginName: string; icon: string; models: PluginModelDescriptor[] }[] = [];
+  for (const model of models) {
+    let group = groups.find((candidate) => candidate.pluginId === model.pluginId);
+    if (!group) {
+      group = { pluginId: model.pluginId, pluginName: model.pluginName, icon: model.icon, models: [] };
+      groups.push(group);
+    }
+    group.models.push(model);
+  }
+  return groups;
+}
+
+function CollapsibleGroup({ label, icon, iconSrc, onSettings, children }: {
+  label: string;
+  icon?: IconifyIcon;
+  iconSrc?: string;
+  onSettings?: () => void;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+  return <Card className={styles.groupCard}>
+    <div className={styles.groupHeader}>
+      <button
+        type="button"
+        className={styles.groupToggle}
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        {icon && <Icon icon={icon} size="1.1em" />}
+        {iconSrc && <Icon src={iconSrc} size="1.1em" />}
+        <span className={styles.groupLabel}>{label}</span>
+      </button>
+      {onSettings && <button type="button" className={styles.groupSettings} onClick={onSettings}>{t("分组设置")}</button>}
+      <button
+        type="button"
+        className={styles.groupChevron}
+        tabIndex={-1}
+        aria-hidden="true"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <Icon icon={open ? chevronDownIcon : chevronRightIcon} size="1em" />
+      </button>
+    </div>
+    {open && <div className={styles.modelList}>{children}</div>}
+  </Card>;
+}
+
+function ModelListRow({ model, disabled, testing, result, onTest, onEdit, onDuplicate, onDelete }: {
+  model: Model;
+  disabled: boolean;
+  testing: boolean;
+  result: CursorModelTestState | undefined;
+  onTest: () => void;
+  onEdit: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}) {
+  return <div className={styles.modelRow}>
+    <div className={styles.modelRowName}>
+      <span className={styles.modelRowNameText}>{model.display_name}</span>
+      <span className={styles.modelRowModelId}>{model.model_id}</span>
+    </div>
+    <CursorModelTestResult compact state={result} testing={testing} />
+    <div className={styles.modelCardActions}>
+      <TruncatedButton size="small" disabled={disabled && !testing} label={testing ? t("取消测试") : t("测试")} onClick={onTest} />
+      <TruncatedButton size="small" disabled={disabled} label={t("编辑")} onClick={onEdit} />
+      <TruncatedButton size="small" disabled={disabled} label={t("复制")} onClick={onDuplicate} />
+      <TruncatedButton size="small" className={styles.deleteButton} disabled={disabled} label={t("删除")} onClick={onDelete} />
+    </div>
+  </div>;
+}
+
+function PluginModelRow({ model, disabled, testing, result, onTest, onSettings }: {
+  model: PluginModelDescriptor;
+  disabled: boolean;
+  testing: boolean;
+  result: CursorModelTestState | undefined;
+  onTest: () => void;
+  onSettings: () => void;
+}) {
+  return <div className={styles.modelRow}>
+    <div className={styles.modelRowName}>
+      <span className={styles.modelRowNameText}>{model.displayName}</span>
+      <span className={styles.modelRowModelId}>{model.modelId}</span>
+    </div>
+    <CursorModelTestResult compact state={result} testing={testing} />
+    <div className={styles.modelCardActions}>
+      <TruncatedButton size="small" disabled={disabled && !testing} label={testing ? t("取消测试") : t("测试")} onClick={onTest} />
+      <TruncatedButton size="small" disabled={disabled} label={t("设置")} onClick={onSettings} />
+    </div>
   </div>;
 }
 
@@ -150,10 +275,10 @@ function ModelGrid({
             <CursorModelTestResult state={result} testing={testing} />
           </div>
           <div className={styles.modelCardActions}>
-            <Button size="small" disabled={disabled && !testing} onClick={() => onTest(model)}>{testing ? t("取消测试") : t("测试")}</Button>
-            <Button size="small" disabled={disabled} onClick={() => onEdit(model)}>{t("编辑")}</Button>
-            <Button size="small" disabled={disabled} onClick={() => onDuplicate(model)}>{t("复制")}</Button>
-            <Button size="small" className={styles.deleteButton} disabled={disabled} onClick={() => onDelete(model)}>{t("删除")}</Button>
+            <TruncatedButton size="small" disabled={disabled && !testing} label={testing ? t("取消测试") : t("测试")} onClick={() => onTest(model)} />
+            <TruncatedButton size="small" disabled={disabled} label={t("编辑")} onClick={() => onEdit(model)} />
+            <TruncatedButton size="small" disabled={disabled} label={t("复制")} onClick={() => onDuplicate(model)} />
+            <TruncatedButton size="small" className={styles.deleteButton} disabled={disabled} label={t("删除")} onClick={() => onDelete(model)} />
           </div>
         </div>
       </Card>;
@@ -162,8 +287,9 @@ function ModelGrid({
 }
 
 function providerGroup(model: Model) {
-  const label = providerDomain(model.base_url);
-  return { key: label, label, icon: flatColorOrganizationIcon };
+  const key = providerDomain(model.base_url);
+  const label = model.group_name?.trim() || key;
+  return { key, label, icon: flatColorOrganizationIcon };
 }
 
 function providerDomain(baseUrl: string) {

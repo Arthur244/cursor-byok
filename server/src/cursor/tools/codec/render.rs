@@ -167,7 +167,7 @@ pub fn tool_completed(call: &ToolCall, completion: &ToolCompletion) -> pb::Agent
 pub fn tool_placeholder(name: &str, call_id: &str) -> Result<pb::ToolCall> {
     use pb::tool_call::Tool;
     let tool = match normalized(name).as_str() {
-        "shell" => Tool::ShellToolCall(pb::ShellToolCall::default()),
+        "shell" | "bash" => Tool::ShellToolCall(pb::ShellToolCall::default()),
         "delete" => Tool::DeleteToolCall(pb::DeleteToolCall::default()),
         "glob" => Tool::GlobToolCall(pb::GlobToolCall::default()),
         "grep" => Tool::GrepToolCall(pb::GrepToolCall::default()),
@@ -526,4 +526,24 @@ fn now_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tool_placeholder;
+    use crate::cursor::protocol::proto::agent::v1 as pb;
+
+    #[test]
+    fn bash_renders_as_a_shell_placeholder() {
+        // The dispatcher treats `bash`/`Bash` as a Shell alias, so the streaming
+        // placeholder must too; otherwise a `Bash` tool call aborts the turn with
+        // `unsupported tool: bash` before it ever runs.
+        for name in ["shell", "Shell", "bash", "Bash"] {
+            let tool = tool_placeholder(name, "call-1").unwrap().tool;
+            assert!(
+                matches!(tool, Some(pb::tool_call::Tool::ShellToolCall(_))),
+                "{name} should render as a Shell tool"
+            );
+        }
+    }
 }

@@ -19,7 +19,9 @@ use crate::{
             connect,
             proto::{agent::v1 as agent, aiserver::v1 as ai},
         },
-        services::{account, analytics, model_catalog, observability::CursorTraceRecorder, tab},
+        services::{
+            account, analytics, knowledge, model_catalog, observability::CursorTraceRecorder, tab,
+        },
         transport::{TransportParent, TransportRegistry},
     },
     Result,
@@ -27,10 +29,15 @@ use crate::{
 
 pub fn router(registry: TransportRegistry) -> Result<Router> {
     let proxy = CursorProxy::cursor(registry.store().clone())?;
-    Ok(router_with_proxy(registry, proxy))
+    let knowledge = knowledge::KnowledgeService::managed()?;
+    Ok(router_with_proxy(registry, proxy, knowledge))
 }
 
-fn router_with_proxy(registry: TransportRegistry, proxy: CursorProxy) -> Router {
+fn router_with_proxy(
+    registry: TransportRegistry,
+    proxy: CursorProxy,
+    knowledge_service: knowledge::KnowledgeService,
+) -> Router {
     let web_cache = registry.web_cache().router();
     Router::new()
         .route("/__byok-api__/healthz", get(health))
@@ -70,6 +77,22 @@ fn router_with_proxy(registry: TransportRegistry, proxy: CursorProxy) -> Router 
             post(account::usage_limit_status),
         )
         .route(
+            "/aiserver.v1.AiService/KnowledgeBaseAdd",
+            post(knowledge::add),
+        )
+        .route(
+            "/aiserver.v1.AiService/KnowledgeBaseList",
+            post(knowledge::list),
+        )
+        .route(
+            "/aiserver.v1.AiService/KnowledgeBaseUpdate",
+            post(knowledge::update),
+        )
+        .route(
+            "/aiserver.v1.AiService/KnowledgeBaseRemove",
+            post(knowledge::remove),
+        )
+        .route(
             analytics::BOOTSTRAP_STATSIG_PATH,
             post(analytics::bootstrap_statsig),
         )
@@ -80,6 +103,7 @@ fn router_with_proxy(registry: TransportRegistry, proxy: CursorProxy) -> Router 
         .fallback(proxy::forward)
         .method_not_allowed_fallback(proxy::forward)
         .layer(Extension(proxy))
+        .layer(Extension(knowledge_service))
         .with_state(registry)
         .merge(web_cache)
 }
@@ -133,7 +157,10 @@ async fn bidi_handler(
     let conversation_id = decoded.conversation_id().map(str::to_owned);
     let trace_metadata = decoded.trace_metadata();
     let local = if let Some(model_id) = decoded.model_id() {
-        if registry.store().model(model_id).await?.is_some() {
+        // 插件模型 ID 只在本地有意义,永远不转发到 Cursor 官方上游。
+        if model_id.starts_with(crate::plugin::ADAPTER_ID_PREFIX)
+            || registry.store().model(model_id).await?.is_some()
+        {
             tracing::info!(
                 request_id = decoded.request_id,
                 model_id,
