@@ -392,7 +392,6 @@ impl ControlService {
         if model_hash.starts_with(crate::plugin::ADAPTER_ID_PREFIX) {
             let descriptor = self.plugins.model_descriptor(model_hash).await?;
             model.display_name = Some(descriptor.display_name);
-            model.context_window_tokens = descriptor.context_window_tokens;
             model.max_output_tokens = Some(descriptor.max_output_tokens.unwrap_or(65_536));
         } else {
             let configured = self

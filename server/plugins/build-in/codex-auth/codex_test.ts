@@ -164,7 +164,10 @@ Deno.test("official model discovery excludes hidden models and puts the default 
         display_name: "GPT First",
         supported_in_api: true,
         visibility: "list",
-        supported_reasoning_efforts: ["low", "medium"],
+        supported_reasoning_levels: [
+          { effort: "low", description: "Fast responses" },
+          { effort: "medium", description: "Balanced" },
+        ],
       },
       { slug: "gpt-second", supported_in_api: true, visibility: "list" },
       { slug: "gpt-hidden", supported_in_api: true, visibility: "hidden" },
@@ -172,7 +175,7 @@ Deno.test("official model discovery excludes hidden models and puts the default 
     ],
   });
   assertEquals(models.map((model) => model.id), ["gpt-second", "gpt-first"]);
-  assertEquals(models[1].capabilities, { thinking: true, images: true });
+  assertEquals(models[1].capabilities, { images: true });
   assertEquals(models[1].privateData, { reasoningEfforts: ["low", "medium"] });
 });
 

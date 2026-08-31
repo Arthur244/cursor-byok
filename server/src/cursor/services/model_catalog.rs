@@ -580,14 +580,9 @@ fn available_plugin_model(model: &PluginModelDescriptor) -> AvailableModel {
     let tooltip = TooltipData {
         markdown_content: model.description.clone(),
     };
-    let contexts = context_options(model.context_window_tokens);
-    let variants = model_variants(
-        &model.id,
-        &model.display_name,
-        &tooltip,
-        &contexts,
-        model.thinking,
-    );
+    // Effort 与上下文档位由宿主统一提供,与内置模型一致;插件不再声明这两项。
+    let contexts = context_options(None);
+    let variants = model_variants(&model.id, &model.display_name, &tooltip, &contexts, true);
     let legacy_slugs = variants
         .iter()
         .filter_map(|variant| variant.legacy_slug.clone())
@@ -598,7 +593,7 @@ fn available_plugin_model(model: &PluginModelDescriptor) -> AvailableModel {
         supports_agent: Some(true),
         degradation_status: Some(0),
         tooltip_data: Some(tooltip.clone()),
-        supports_thinking: Some(model.thinking),
+        supports_thinking: Some(true),
         supports_images: Some(model.images),
         supports_max_mode: Some(false),
         client_display_name: Some(model.display_name.clone()),
@@ -610,7 +605,7 @@ fn available_plugin_model(model: &PluginModelDescriptor) -> AvailableModel {
         inputbox_short_model_name: Some(model.display_name.clone()),
         supports_sandboxing: Some(true),
         supports_cmd_k: Some(false),
-        parameter_definitions: model_parameters(&contexts, model.thinking),
+        parameter_definitions: model_parameters(&contexts, true),
         variants,
         legacy_slugs,
         named_model_section_index: Some(1),
@@ -633,7 +628,7 @@ fn usable_plugin_model(model: &PluginModelDescriptor) -> agent::ModelDetails {
         display_model_id: model.id.clone(),
         display_name: model.display_name.clone(),
         display_name_short: model.display_name.clone(),
-        thinking_details: model.thinking.then(agent::ThinkingDetails::default),
+        thinking_details: Some(agent::ThinkingDetails::default()),
         ..Default::default()
     }
 }

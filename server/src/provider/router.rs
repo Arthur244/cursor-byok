@@ -67,9 +67,6 @@ impl Provider for ProviderRouter {
                     recorder.request(serde_json::json!({}), &crate::plugin::plugin_llm_request(&invocation)?).await?;
                     let mut routed = invocation.clone();
                     routed.request.model.display_name = Some(plan.model.display_name.clone());
-                    if let Some(tokens) = plan.model.context_window_tokens {
-                        routed.request.model.context_window_tokens.get_or_insert(tokens);
-                    }
                     if let Some(tokens) = plan.model.max_output_tokens {
                         routed.request.model.max_output_tokens.get_or_insert(tokens);
                     }
