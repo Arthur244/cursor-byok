@@ -101,7 +101,14 @@ impl Store {
             .bind(&call.call_id)
             .bind(&call.model_call_id)
             .bind(&call.name)
-            .bind(&call.arguments_text)
+            // A no-argument tool call streams no argument text; persist it as an
+            // empty object so the `arguments_json` column always holds valid JSON
+            // and can be re-parsed on load.
+            .bind(if call.arguments_text.trim().is_empty() {
+                "{}"
+            } else {
+                call.arguments_text.as_str()
+            })
             .execute(&mut *tx)
             .await?;
         }
