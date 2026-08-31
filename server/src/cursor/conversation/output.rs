@@ -431,21 +431,28 @@ impl ConversationOutput {
                             streams.clear();
                         }
                         if let CommitCause::RuntimeEvent { event_id } = &state.cause {
-                            if let Some(injection_id) = event_id.strip_prefix("inject-context:") {
-                                if let Some(pending) = self.pending_injections.remove(injection_id)
-                                {
-                                    let delivered_at_ms = crate::cursor::tools::runtime::now_ms()
-                                        .min(i64::MAX as u64)
-                                        as i64;
-                                    self.handle.emit(&events::context_injection_delivered(
-                                        injection_id.to_owned(),
-                                        pending.delivery_batch_id.clone(),
-                                        delivered_at_ms,
-                                    ))?;
-                                    if let Some(user_message) = pending.user_message {
-                                        self.handle
-                                            .emit(&events::user_message_appended(user_message))?;
-                                    }
+                            // Injections key `pending_injections` by their raw
+                            // injection id and commit under `inject-context:{id}`,
+                            // while runtime user messages key it by (and commit
+                            // under) the full `user-message:{id}` event id. Strip
+                            // the injection prefix when present and otherwise use
+                            // the event id verbatim so both are cleared and emit
+                            // their delivered/appended events.
+                            let injection_id = event_id
+                                .strip_prefix("inject-context:")
+                                .unwrap_or(event_id.as_str());
+                            if let Some(pending) = self.pending_injections.remove(injection_id) {
+                                let delivered_at_ms = crate::cursor::tools::runtime::now_ms()
+                                    .min(i64::MAX as u64)
+                                    as i64;
+                                self.handle.emit(&events::context_injection_delivered(
+                                    injection_id.to_owned(),
+                                    pending.delivery_batch_id.clone(),
+                                    delivered_at_ms,
+                                ))?;
+                                if let Some(user_message) = pending.user_message {
+                                    self.handle
+                                        .emit(&events::user_message_appended(user_message))?;
                                 }
                             }
                         }
