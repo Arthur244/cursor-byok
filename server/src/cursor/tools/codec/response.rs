@@ -144,7 +144,8 @@ pub async fn stream_closed(id: u32, pending: &CursorToolRuntime) -> Result<Optio
         return Ok(None);
     };
     let error = "Cursor Exec stream closed before returning a terminal result";
-    if entry.call.name.eq_ignore_ascii_case("Shell") {
+    if entry.call.name.eq_ignore_ascii_case("Shell") || entry.call.name.eq_ignore_ascii_case("Bash")
+    {
         let command = entry
             .call
             .arguments
