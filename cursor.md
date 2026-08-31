@@ -1,9 +1,4 @@
-以下是重构后完整目标版本
-实现时，先创建所有目录和文件固化，每个文件头部都写好注释再实现
-旧服务已被备份为server_backup,/Users/leokun/Documents/cursor-byok/server 目录已创建
-行数均为目标估算，使用 `≈` 标记；不包含测试、生成代码和空行。
-实现时可做略微调整，测试要求相对于目标文件旁边的独立文件，禁止码内测试
-本文档目录 /Users/leokun/Documents/cursor-byok/cursor.md
+
 ## 完整目录
 
 ```text
