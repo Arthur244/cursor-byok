@@ -507,6 +507,68 @@ async fn runtime_user_message_action_interrupts_and_continues_with_new_message()
 }
 
 #[tokio::test]
+async fn tool_call_with_empty_arguments_does_not_fail_the_run() {
+    // A tool call that carries no arguments streams no argument text. Parsing it
+    // as JSON must yield an empty object (as the model cycle already does), not
+    // fail the run with `EOF while parsing a value`.
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(tool_response("call-1", "UpdateCurrentStep", ""));
+    provider.push(text_response("done after empty-argument tool"));
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store,
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+    let handle = registry.get_or_create("empty-args-request").await.unwrap();
+    let mut output = handle.subscribe();
+    handle
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(client_run_for(
+                "empty-args-request",
+                "empty-args-conversation",
+            )),
+        })
+        .await
+        .unwrap();
+
+    let mut append_seqno = 1;
+    let mut saw_done = false;
+    loop {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(5), output.recv())
+            .await
+            .unwrap()
+            .expect("RunSSE closed before successful EndStream");
+        let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+        if flags & connect::END_STREAM_FLAG != 0 {
+            assert_eq!(
+                payload.as_ref(),
+                b"{}",
+                "run failed: {}",
+                String::from_utf8_lossy(&payload)
+            );
+            break;
+        }
+        let server = pb::AgentServerMessage::decode(payload).unwrap();
+        if let Some(pb::agent_server_message::Message::InteractionUpdate(update)) = server.message {
+            if let Some(pb::interaction_update::Message::TextDelta(delta)) = update.message {
+                saw_done |= delta.text.contains("done after empty-argument tool");
+            }
+        }
+        acknowledge_kv(&handle, &mut append_seqno, &frame).await;
+    }
+    assert!(saw_done);
+    assert_eq!(provider.requests().len(), 2);
+}
+
+#[tokio::test]
 async fn injected_user_context_restarts_only_the_active_model_cycle() {
     let (_directory, store) = fixtures::temp_store().await;
     let provider = fake_provider::FakeProvider::default();
