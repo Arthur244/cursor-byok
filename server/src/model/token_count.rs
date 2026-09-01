@@ -11,10 +11,15 @@ pub(crate) fn estimate_context_tokens(prompt: &PromptSpec, messages: &[Projected
     let tools = prompt.tools.iter().fold(0_u64, |total, tool| {
         total.saturating_add(estimate_json_tokens(tool))
     });
-    let messages = messages.iter().fold(0_u64, |total, message| {
+    instructions
+        .saturating_add(tools)
+        .saturating_add(estimate_projected_messages_tokens(messages))
+}
+
+pub(crate) fn estimate_projected_messages_tokens(messages: &[ProjectedMessage]) -> u64 {
+    messages.iter().fold(0_u64, |total, message| {
         total.saturating_add(estimate_message_tokens(message))
-    });
-    instructions.saturating_add(tools).saturating_add(messages)
+    })
 }
 
 fn estimate_message_tokens(message: &ProjectedMessage) -> u64 {
@@ -23,7 +28,7 @@ fn estimate_message_tokens(message: &ProjectedMessage) -> u64 {
         ProjectedContent::Assistant {
             text,
             thinking,
-            replay_state,
+            replay_state: _,
             calls,
         } => {
             let calls = calls.iter().fold(0_u64, |total, call| {
@@ -35,12 +40,6 @@ fn estimate_message_tokens(message: &ProjectedMessage) -> u64 {
             });
             estimate_text_tokens(text)
                 .saturating_add(estimate_text_tokens(thinking))
-                .saturating_add(
-                    replay_state
-                        .as_ref()
-                        .map(estimate_json_tokens)
-                        .unwrap_or_default(),
-                )
                 .saturating_add(calls)
         }
         ProjectedContent::ToolResult(result) => {
@@ -118,7 +117,9 @@ pub(crate) fn format_token_count(tokens: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Role, ToolCallContent, ToolDefinition, ToolResultContent};
+    use crate::model::{
+        ProviderReplayState, Role, ToolCallContent, ToolDefinition, ToolResultContent,
+    };
 
     fn prompt() -> PromptSpec {
         PromptSpec {
@@ -213,5 +214,35 @@ mod tests {
         assert!(with_call > base);
         assert!(with_text > with_call);
         assert!(with_image > with_text);
+    }
+
+    #[test]
+    fn assistant_replay_state_does_not_duplicate_thinking_or_count_signature() {
+        let assistant = |replay_state| ProjectedMessage {
+            message_id: "assistant".into(),
+            role: Role::Assistant,
+            content: ProjectedContent::Assistant {
+                text: "answer".into(),
+                thinking: "reasoning".repeat(1_000),
+                replay_state,
+                calls: Vec::new(),
+            },
+        };
+        let without_replay = assistant(None);
+        let with_replay = assistant(Some(ProviderReplayState {
+            provider_kind: "anthropic".into(),
+            value: serde_json::json!({
+                "blocks": [{
+                    "type": "thinking",
+                    "thinking": "reasoning".repeat(1_000),
+                    "signature": "s".repeat(282_100)
+                }]
+            }),
+        }));
+
+        assert_eq!(
+            estimate_projected_messages_tokens(&[without_replay]),
+            estimate_projected_messages_tokens(&[with_replay])
+        );
     }
 }
