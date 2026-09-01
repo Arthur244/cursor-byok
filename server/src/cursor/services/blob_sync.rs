@@ -20,6 +20,9 @@ use crate::{
 
 type BlobSetSender = oneshot::Sender<Result<()>>;
 
+const SET_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const GET_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+
 #[derive(Clone)]
 pub struct BlobSynchronizer {
     inner: Arc<Inner>,
@@ -130,7 +133,7 @@ impl BlobSynchronizer {
         let result = tokio::select! {
             result = receiver => result.map_err(|_| Error::Protocol("KV SET response channel closed".into()))?,
             _ = cancellation.cancelled() => Err(Error::Cancelled),
-            _ = tokio::time::sleep(Duration::from_secs(60)) => Err(Error::Protocol(format!("KV SET timed out: {}", blob_id.to_base64()))),
+            _ = tokio::time::sleep(SET_TIMEOUT) => Err(Error::Protocol(format!("KV SET timed out: {}", blob_id.to_base64()))),
         };
         if result.is_err() {
             self.inner.set_requests.lock().await.remove(&id);
@@ -183,7 +186,7 @@ impl BlobSynchronizer {
         let result = tokio::select! {
             result = receiver => result.map_err(|_| Error::Protocol("KV GET response channel closed".into()))?,
             _ = cancellation.cancelled() => Err(Error::Cancelled),
-            _ = tokio::time::sleep(Duration::from_secs(60)) => Err(Error::Protocol(format!("KV GET timed out: {}", blob_id.to_base64()))),
+            _ = tokio::time::sleep(GET_TIMEOUT) => Err(Error::Protocol(format!("KV GET timed out: {}", blob_id.to_base64()))),
         };
         if result.is_err() {
             self.inner.get_requests.lock().await.remove(&id);
@@ -316,5 +319,20 @@ impl BlobSynchronizer {
             None => {}
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn set_timeout_allows_slow_cursor_acknowledgements() {
+        assert_eq!(SET_TIMEOUT, Duration::from_secs(30 * 60));
+    }
+
+    #[test]
+    fn get_timeout_allows_slow_cursor_responses() {
+        assert_eq!(GET_TIMEOUT, Duration::from_secs(10 * 60));
     }
 }

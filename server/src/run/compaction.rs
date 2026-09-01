@@ -40,15 +40,23 @@ pub(super) fn estimated_tokens(
         .unwrap_or_else(|| estimate_context_tokens(&prepared.prompt, projected_messages))
 }
 
+pub(super) fn compaction_estimate(
+    prepared: &PreparedRun,
+    projected_messages: &[ProjectedMessage],
+    anchor: Option<ContextUsageAnchor>,
+) -> Option<u64> {
+    let budget = input_budget(prepared)?;
+    let estimated = estimated_tokens(prepared, projected_messages, anchor);
+    (estimated > budget).then_some(estimated)
+}
+
+#[cfg(test)]
 pub(super) fn should_compact(
     prepared: &PreparedRun,
     projected_messages: &[ProjectedMessage],
     anchor: Option<ContextUsageAnchor>,
 ) -> bool {
-    let Some(budget) = input_budget(prepared) else {
-        return false;
-    };
-    estimated_tokens(prepared, projected_messages, anchor) > budget
+    compaction_estimate(prepared, projected_messages, anchor).is_some()
 }
 
 pub(super) fn validate_compacted(

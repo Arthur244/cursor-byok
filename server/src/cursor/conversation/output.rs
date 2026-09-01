@@ -399,6 +399,14 @@ impl ConversationOutput {
                                 .unwrap_or_else(|_| serde_json::json!({}))
                         };
                     }
+                    RunEvent::UsageSnapshot(usage) => {
+                        if !self.context.compacting {
+                            if let Some(output_tokens) = usage.output_tokens {
+                                self.handle.emit(&events::token_delta(output_tokens))?;
+                            }
+                            context_tokens = usage.context_input_tokens;
+                        }
+                    }
                     RunEvent::Usage(usage) => {
                         if !self.context.compacting {
                             if let Some(output_tokens) = usage.output_tokens {

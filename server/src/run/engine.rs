@@ -183,9 +183,21 @@ impl RunEngine {
                 Ok(history) => history,
                 Err(error) => return (RunOutcome::Failed(error.into()), usage),
             };
-            if prepared.action != RunAction::Compact
-                && super::compaction::should_compact(prepared, &history, context_usage_anchor)
-            {
+            let compaction_estimate = (prepared.action != RunAction::Compact)
+                .then(|| {
+                    super::compaction::compaction_estimate(prepared, &history, context_usage_anchor)
+                })
+                .flatten();
+            if let Some(estimated_tokens) = compaction_estimate {
+                if emit(
+                    client,
+                    RunEvent::UsageSnapshot(context_usage_snapshot(estimated_tokens)),
+                )
+                .await
+                .is_err()
+                {
+                    return (client_failure(), usage);
+                }
                 match self
                     .auto_compact(prepared, checkpoint, &messages, client, cancellation)
                     .await
@@ -703,20 +715,6 @@ impl RunEngine {
         emit(client, RunEvent::AutoCompactionStarted)
             .await
             .map_err(|_| client_failure())?;
-        emit(
-            client,
-            RunEvent::Usage(Usage {
-                input_tokens: Some(0),
-                context_input_tokens: Some(0),
-                output_tokens: Some(0),
-                total_tokens: Some(0),
-                cache_read_tokens: Some(0),
-                cache_write_tokens: Some(0),
-                reasoning_tokens: Some(0),
-            }),
-        )
-        .await
-        .map_err(|_| client_failure())?;
         let provider_call_index = self
             .store
             .begin_provider_call(&prepared.run_id)
@@ -862,6 +860,9 @@ impl RunEngine {
         emit(client, RunEvent::AutoCompactionCompleted)
             .await
             .map_err(|_| client_failure())?;
+        emit(client, RunEvent::UsageSnapshot(context_usage_snapshot(0)))
+            .await
+            .map_err(|_| client_failure())?;
         checkpoint = super::messages::append_batches(
             &self.store,
             prepared,
@@ -920,6 +921,18 @@ async fn hydrate_tool_images(
         ];
     }
     Ok(())
+}
+
+fn context_usage_snapshot(tokens: u64) -> Usage {
+    Usage {
+        input_tokens: Some(tokens),
+        context_input_tokens: Some(tokens),
+        output_tokens: Some(0),
+        total_tokens: Some(tokens),
+        cache_read_tokens: Some(0),
+        cache_write_tokens: Some(0),
+        reasoning_tokens: Some(0),
+    }
 }
 
 fn update_context_usage_anchor(

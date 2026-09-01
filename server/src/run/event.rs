@@ -129,6 +129,7 @@ pub enum RunEvent {
     ToolCallEnd {
         index: usize,
     },
+    UsageSnapshot(Usage),
     Usage(Usage),
     ExecuteToolRound {
         round_id: ToolRoundId,

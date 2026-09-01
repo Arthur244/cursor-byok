@@ -268,9 +268,14 @@ async fn automatic_compaction_preflights_provider_input_and_records_rebuilt_toke
     assert_eq!(second.summary_started, 1);
     assert_eq!(second.summary_completed, 1);
     assert_eq!(
-        &second.interaction_events[..2],
-        &["summary_started", "token_delta:0"],
-        "automatic compaction must immediately reset Cursor usage"
+        &second.interaction_events[..4],
+        &[
+            "token_delta:0",
+            "summary_started",
+            "summary_completed",
+            "token_delta:0",
+        ],
+        "automatic compaction must publish estimated usage before summarizing and zero usage after"
     );
     let compacted_tokens = second
         .checkpoints
@@ -530,7 +535,8 @@ async fn run(
                         output.summary.push_str(&delta.summary)
                     }
                     Some(pb::interaction_update::Message::SummaryCompleted(_)) => {
-                        output.summary_completed += 1
+                        output.summary_completed += 1;
+                        output.interaction_events.push("summary_completed".into());
                     }
                     Some(pb::interaction_update::Message::TurnEnded(_)) => output.turn_ended += 1,
                     Some(pb::interaction_update::Message::TokenDelta(delta)) => {
