@@ -320,9 +320,17 @@ fn merge_usage(total: &mut Usage, update: Usage) {
     merge_usage_field(&mut total.input_tokens, update.input_tokens);
     merge_usage_field(&mut total.context_input_tokens, update.context_input_tokens);
     merge_usage_field(&mut total.output_tokens, update.output_tokens);
+    merge_usage_field(&mut total.total_tokens, update.total_tokens);
     merge_usage_field(&mut total.cache_read_tokens, update.cache_read_tokens);
     merge_usage_field(&mut total.cache_write_tokens, update.cache_write_tokens);
     merge_usage_field(&mut total.reasoning_tokens, update.reasoning_tokens);
+    if let Some(request_tokens) = total
+        .context_input_tokens
+        .zip(total.output_tokens)
+        .and_then(|(input, output)| input.checked_add(output))
+    {
+        total.total_tokens = Some(request_tokens);
+    }
 }
 
 fn merge_usage_field(total: &mut Option<u64>, update: Option<u64>) {
@@ -510,5 +518,30 @@ mod tests {
         assert_eq!(usage.input_tokens, Some(10));
         assert_eq!(usage.context_input_tokens, Some(60));
         assert_eq!(usage.output_tokens, Some(5));
+    }
+
+    #[test]
+    fn streamed_anthropic_usage_includes_cached_input_in_total() {
+        let mut usage = Usage::default();
+        merge_usage(
+            &mut usage,
+            anthropic_usage(&serde_json::json!({
+                "input_tokens": 414,
+                "output_tokens": 0,
+                "cache_read_input_tokens": 100_352,
+                "cache_creation_input_tokens": 0
+            })),
+        );
+        merge_usage(
+            &mut usage,
+            anthropic_usage(&serde_json::json!({"output_tokens": 191})),
+        );
+
+        assert_eq!(usage.input_tokens, Some(414));
+        assert_eq!(usage.cache_read_tokens, Some(100_352));
+        assert_eq!(usage.cache_write_tokens, Some(0));
+        assert_eq!(usage.context_input_tokens, Some(100_766));
+        assert_eq!(usage.output_tokens, Some(191));
+        assert_eq!(usage.total_tokens, Some(100_957));
     }
 }
