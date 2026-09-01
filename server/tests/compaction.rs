@@ -267,6 +267,11 @@ async fn automatic_compaction_preflights_provider_input_and_records_rebuilt_toke
     .await;
     assert_eq!(second.summary_started, 1);
     assert_eq!(second.summary_completed, 1);
+    assert_eq!(
+        &second.interaction_events[..2],
+        &["summary_started", "token_delta:0"],
+        "automatic compaction must immediately reset Cursor usage"
+    );
     let compacted_tokens = second
         .checkpoints
         .iter()
@@ -469,6 +474,7 @@ struct Output {
     summary_completed: usize,
     turn_ended: usize,
     token_delta: usize,
+    interaction_events: Vec<String>,
 }
 
 async fn run(
@@ -517,7 +523,8 @@ async fn run(
             Some(pb::agent_server_message::Message::InteractionUpdate(update)) => {
                 match update.message {
                     Some(pb::interaction_update::Message::SummaryStarted(_)) => {
-                        output.summary_started += 1
+                        output.summary_started += 1;
+                        output.interaction_events.push("summary_started".into());
                     }
                     Some(pb::interaction_update::Message::Summary(delta)) => {
                         output.summary.push_str(&delta.summary)
@@ -526,7 +533,12 @@ async fn run(
                         output.summary_completed += 1
                     }
                     Some(pb::interaction_update::Message::TurnEnded(_)) => output.turn_ended += 1,
-                    Some(pb::interaction_update::Message::TokenDelta(_)) => output.token_delta += 1,
+                    Some(pb::interaction_update::Message::TokenDelta(delta)) => {
+                        output.token_delta += 1;
+                        output
+                            .interaction_events
+                            .push(format!("token_delta:{}", delta.tokens));
+                    }
                     _ => {}
                 }
             }

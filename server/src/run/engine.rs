@@ -703,6 +703,20 @@ impl RunEngine {
         emit(client, RunEvent::AutoCompactionStarted)
             .await
             .map_err(|_| client_failure())?;
+        emit(
+            client,
+            RunEvent::Usage(Usage {
+                input_tokens: Some(0),
+                context_input_tokens: Some(0),
+                output_tokens: Some(0),
+                total_tokens: Some(0),
+                cache_read_tokens: Some(0),
+                cache_write_tokens: Some(0),
+                reasoning_tokens: Some(0),
+            }),
+        )
+        .await
+        .map_err(|_| client_failure())?;
         let provider_call_index = self
             .store
             .begin_provider_call(&prepared.run_id)
