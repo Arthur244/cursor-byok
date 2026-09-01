@@ -18,8 +18,6 @@ use super::{
     OpenAiChatProvider, OpenAiResponsesProvider, Provider, ProviderStream,
 };
 
-const BUILTIN_PROVIDER_RETRIES: u32 = 5;
-
 pub struct ProviderRouter {
     store: Store,
     plugins: PluginRegistry,
@@ -91,7 +89,6 @@ impl Provider for ProviderRouter {
                         custom_headers: if model.custom_headers_enabled { custom_headers(&model.custom_headers)? } else { reqwest::header::HeaderMap::new() },
                         max_output_tokens: model.max_output_tokens(),
                         request_timeout,
-                        retry_count: BUILTIN_PROVIDER_RETRIES,
                         allowed_body_fields: None,
                     };
                     let client = crate::network::client_builder(&store).await?.timeout(request_timeout).build()?;

@@ -21,7 +21,7 @@ use crate::{
         protocol::proto::agent::v1 as pb,
         services::blob_sync::BlobSynchronizer,
         tools::{
-            codec,
+            codec, compat,
             runtime::CursorToolRuntime,
             stream::ToolCallStream,
             tool_call_result::{ToolCompletion, ToolResultReceiver},
@@ -264,6 +264,32 @@ impl ConversationOutput {
                         streams.clear();
                         presentation.discard_model_output();
                     }
+                    RunEvent::ModelAttemptFailed { attempt, message } => {
+                        tracing::warn!(
+                            run_id = %self.run.run_id(),
+                            attempt,
+                            %message,
+                            "retrying model call from current checkpoint"
+                        );
+                        presentation.finish_model_attempt();
+                        for call in calls.values_mut() {
+                            if call.arguments.is_null() {
+                                call.arguments = serde_json::from_str(&call.arguments_text)
+                                    .unwrap_or_else(|_| serde_json::json!({}));
+                            }
+                            let completion = compat::failure_with_message(
+                                call,
+                                format!("Model attempt failed before tool completion: {message}"),
+                            );
+                            self.handle
+                                .emit(&codec::tool_completed(call, &completion))?;
+                            presentation.tool_completed(&completion);
+                        }
+                        response_text.clear();
+                        response_thinking.clear();
+                        calls.clear();
+                        streams.clear();
+                    }
                     RunEvent::TextStart => {}
                     RunEvent::TextEnd => {
                         if !self.context.compacting {
@@ -312,6 +338,7 @@ impl ConversationOutput {
                             name: name.clone(),
                             arguments_text: String::new(),
                             arguments: serde_json::Value::Null,
+                            argument_error: None,
                         };
                         self.emit_model_event(
                             crate::provider::ModelEvent::ToolCallStart {
@@ -335,8 +362,27 @@ impl ConversationOutput {
                         let stream = streams.get_mut(&index).ok_or_else(|| {
                             Error::Protocol(format!("missing Cursor tool stream: {index}"))
                         })?;
-                        for message in stream.arguments_delta(call, &delta)? {
-                            self.handle.emit(&message)?;
+                        match stream.arguments_delta(call, &delta) {
+                            Ok(messages) => {
+                                for message in messages {
+                                    self.handle.emit(&message)?;
+                                }
+                            }
+                            Err(Error::Protocol(message)) => {
+                                tracing::warn!(
+                                    call_id = %call.call_id,
+                                    %message,
+                                    "ignoring invalid streaming tool arguments until completion"
+                                );
+                            }
+                            Err(Error::Json(error)) => {
+                                tracing::warn!(
+                                    call_id = %call.call_id,
+                                    %error,
+                                    "ignoring invalid streaming tool arguments until completion"
+                                );
+                            }
+                            Err(error) => return Err(error),
                         }
                     }
                     RunEvent::ToolCallEnd { index } => {
@@ -349,7 +395,8 @@ impl ConversationOutput {
                         call.arguments = if call.arguments_text.trim().is_empty() {
                             serde_json::json!({})
                         } else {
-                            serde_json::from_str(&call.arguments_text)?
+                            serde_json::from_str(&call.arguments_text)
+                                .unwrap_or_else(|_| serde_json::json!({}))
                         };
                     }
                     RunEvent::Usage(usage) => {
@@ -359,10 +406,7 @@ impl ConversationOutput {
                             }
                         }
                         if !self.context.compacting {
-                            context_tokens = usage
-                                .input_tokens
-                                .zip(usage.output_tokens)
-                                .and_then(|(input, output)| input.checked_add(output));
+                            context_tokens = usage.context_input_tokens;
                         }
                         match &mut turn_usage {
                             Some(total) => *total += usage,
@@ -523,6 +567,7 @@ impl ConversationOutput {
                                 .map_err(|_| Error::Protocol("checkpoint worker stopped".into()))?
                             {
                                 Ok(checkpoint) => {
+                                    context_tokens = checkpoint_context_tokens(&checkpoint);
                                     compaction_checkpoint = Some(checkpoint);
                                     state.barrier.complete(Ok(()));
                                 }
@@ -1029,10 +1074,34 @@ pub(crate) fn finish_cancelled(handle: &TransportHandle) -> Result<()> {
     Ok(())
 }
 
+fn checkpoint_context_tokens(checkpoint: &pb::ConversationStateStructure) -> Option<u64> {
+    checkpoint
+        .token_details
+        .as_ref()
+        .map(|details| u64::from(details.used_tokens))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::accept_tool_completion;
-    use crate::{run::CommandResult, Error};
+    use super::{accept_tool_completion, checkpoint_context_tokens};
+    use crate::{cursor::protocol::proto::agent::v1 as pb, run::CommandResult, Error};
+
+    #[test]
+    fn compacted_checkpoint_replaces_the_in_memory_context_usage() {
+        let compacted = pb::ConversationStateStructure {
+            token_details: Some(pb::ConversationTokenDetails {
+                used_tokens: 20_000,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        assert_eq!(checkpoint_context_tokens(&compacted), Some(20_000));
+        assert_eq!(
+            checkpoint_context_tokens(&pb::ConversationStateStructure::default()),
+            None
+        );
+    }
 
     #[test]
     fn closing_and_ended_runs_ignore_known_tool_completions() {

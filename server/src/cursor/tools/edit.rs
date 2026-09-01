@@ -265,6 +265,7 @@ mod tests {
                 "old_string": old_string,
                 "new_string": "replacement",
             }),
+            argument_error: None,
         }
     }
 

@@ -14,8 +14,10 @@ use crate::{
 };
 
 use super::{
-    consume_model_cycle, CommitBarrier, CommitCause, MessagesCommitted, ModelCycleFailure,
-    RunCommand, RunEvent, RunFailure, RunOutcome, RunPort,
+    consume_model_cycle,
+    model_retry::{should_retry, MODEL_RETRY_DELAY},
+    CommitBarrier, CommitCause, MessagesCommitted, RunCommand, RunEvent, RunFailure, RunOutcome,
+    RunPort,
 };
 
 pub struct RunEngine {
@@ -208,119 +210,213 @@ impl RunEngine {
                 model: prepared.model.clone(),
                 history,
             };
-            let invocation = crate::model::ModelInvocation {
-                call_id: format!("{}:{provider_call_index}", prepared.run_id),
-                run_id: prepared.run_id.to_string(),
-                conversation_id: prepared.conversation_id.to_string(),
-                provider_call_index,
-                request,
-            };
-            let cycle_cancellation = cancellation.child_token();
-            let cycle_events = client.events.clone();
-            let cycle = consume_model_cycle(
-                self.provider.stream(invocation, cycle_cancellation.clone()),
-                &cycle_events,
-                &cycle_cancellation,
-            );
-            tokio::pin!(cycle);
+            let mut retries = 0_u32;
             let mut pending_insertions = Vec::new();
-            let cycle = loop {
-                tokio::select! {
-                    biased;
-                    command = client.commands.recv() => {
-                        let interruption = match command {
-                            Some(RunCommand::InsertMessages(insertion)) => {
-                                pending_insertions.push(insertion);
-                                continue;
+            let cycle = 'attempt: loop {
+                let call_id = if retries == 0 {
+                    format!("{}:{provider_call_index}", prepared.run_id)
+                } else {
+                    format!("{}:{provider_call_index}:retry-{retries}", prepared.run_id)
+                };
+                let invocation = crate::model::ModelInvocation {
+                    call_id,
+                    run_id: prepared.run_id.to_string(),
+                    conversation_id: prepared.conversation_id.to_string(),
+                    provider_call_index,
+                    request: request.clone(),
+                };
+                let cycle_cancellation = cancellation.child_token();
+                let cycle_events = client.events.clone();
+                let cycle = consume_model_cycle(
+                    self.provider.stream(invocation, cycle_cancellation.clone()),
+                    &cycle_events,
+                    &cycle_cancellation,
+                );
+                tokio::pin!(cycle);
+                let cycle = loop {
+                    tokio::select! {
+                        biased;
+                        command = client.commands.recv() => {
+                            let interruption = match command {
+                                Some(RunCommand::InsertMessages(insertion)) => {
+                                    pending_insertions.push(insertion);
+                                    continue;
+                                }
+                                Some(RunCommand::BreakMessages(messages)) => messages,
+                                Some(RunCommand::Cancel) => {
+                                    cycle_cancellation.cancel();
+                                    let _ = cycle.await;
+                                    let _ = emit(client, RunEvent::CycleInterrupted).await;
+                                    return (RunOutcome::Cancelled, usage);
+                                }
+                                Some(RunCommand::ToolResult(_)) => {
+                                    cycle_cancellation.cancel();
+                                    let _ = cycle.await;
+                                    let _ = emit(client, RunEvent::CycleInterrupted).await;
+                                    return (
+                                        RunOutcome::Failed(RunFailure::Protocol(
+                                            "received a tool result while the model was running".into(),
+                                        )),
+                                        usage,
+                                    );
+                                }
+                                None => {
+                                    cycle_cancellation.cancel();
+                                    let _ = cycle.await;
+                                    let _ = emit(client, RunEvent::CycleInterrupted).await;
+                                    return (client_failure(), usage);
+                                }
+                            };
+                            cycle_cancellation.cancel();
+                            let interrupted = cycle.await;
+                            match interrupted {
+                                Ok(cycle) => {
+                                    if let Some(cycle_usage) = cycle.usage {
+                                        accumulate_usage(&mut usage, cycle_usage);
+                                    }
+                                }
+                                Err(failure) => {
+                                    if let Some(cycle_usage) = failure.usage {
+                                        accumulate_usage(&mut usage, cycle_usage);
+                                    }
+                                }
                             }
-                            Some(RunCommand::BreakMessages(messages)) => messages,
-                            Some(RunCommand::Cancel) => {
-                                cycle_cancellation.cancel();
-                                let _ = cycle.await;
-                                let _ = emit(client, RunEvent::CycleInterrupted).await;
-                                return (RunOutcome::Cancelled, usage);
-                            }
-                            Some(RunCommand::ToolResult(_)) => {
-                                cycle_cancellation.cancel();
-                                let _ = cycle.await;
-                                let _ = emit(client, RunEvent::CycleInterrupted).await;
-                                return (
-                                    RunOutcome::Failed(RunFailure::Protocol(
-                                        "received a tool result while the model was running".into(),
-                                    )),
-                                    usage,
-                                );
-                            }
-                            None => {
-                                cycle_cancellation.cancel();
-                                let _ = cycle.await;
-                                let _ = emit(client, RunEvent::CycleInterrupted).await;
+                            if emit(client, RunEvent::CycleInterrupted).await.is_err() {
                                 return (client_failure(), usage);
                             }
-                        };
-                        cycle_cancellation.cancel();
-                        let interrupted = cycle.await;
-                        match interrupted {
-                            Ok(cycle) => {
-                                if let Some(cycle_usage) = cycle.usage {
-                                    accumulate_usage(&mut usage, cycle_usage);
-                                }
-                            }
-                            Err(failure) => {
-                                if let Some(cycle_usage) = failure.usage {
-                                    accumulate_usage(&mut usage, cycle_usage);
-                                }
-                            }
+                            checkpoint = match super::messages::append_batches(
+                                &self.store,
+                                prepared,
+                                client,
+                                cancellation,
+                                checkpoint,
+                                std::mem::take(&mut pending_insertions),
+                            )
+                            .await
+                            {
+                                Ok((checkpoint, _)) => checkpoint,
+                                Err(outcome) => return (outcome, usage),
+                            };
+                            checkpoint = match super::messages::append_batches(
+                                &self.store,
+                                prepared,
+                                client,
+                                cancellation,
+                                checkpoint,
+                                vec![interruption],
+                            )
+                            .await
+                            {
+                                Ok((checkpoint, _)) => checkpoint,
+                                Err(outcome) => return (outcome, usage),
+                            };
+                            continue 'model;
+                        },
+                        result = &mut cycle => break result,
+                    }
+                };
+                match cycle {
+                    Ok(cycle) => break 'attempt cycle,
+                    Err(cycle_failure) => {
+                        if let Some(cycle_usage) = cycle_failure.usage {
+                            accumulate_usage(&mut usage, cycle_usage);
                         }
-                        if emit(client, RunEvent::CycleInterrupted).await.is_err() {
+                        if cancellation.is_cancelled() {
+                            let _ = emit(client, RunEvent::CycleInterrupted).await;
+                            return (RunOutcome::Cancelled, usage);
+                        }
+                        if !should_retry(&cycle_failure, retries) {
+                            return (RunOutcome::Failed(cycle_failure.failure), usage);
+                        }
+                        retries += 1;
+                        let message = failure_message(&cycle_failure.failure);
+                        tracing::warn!(
+                            provider_call_index,
+                            retries,
+                            max_retries = super::model_retry::MAX_MODEL_RETRIES,
+                            delay_ms = MODEL_RETRY_DELAY.as_millis() as u64,
+                            %message,
+                            checkpoint_id = checkpoint.0,
+                            "model attempt failed; retrying from current checkpoint"
+                        );
+                        if emit(
+                            client,
+                            RunEvent::ModelAttemptFailed {
+                                attempt: retries,
+                                message,
+                            },
+                        )
+                        .await
+                        .is_err()
+                        {
                             return (client_failure(), usage);
                         }
-                        checkpoint = match super::messages::append_batches(
-                            &self.store,
-                            prepared,
-                            client,
-                            cancellation,
-                            checkpoint,
-                            std::mem::take(&mut pending_insertions),
-                        )
-                        .await
-                        {
-                            Ok((checkpoint, _)) => checkpoint,
-                            Err(outcome) => return (outcome, usage),
-                        };
-                        checkpoint = match super::messages::append_batches(
-                            &self.store,
-                            prepared,
-                            client,
-                            cancellation,
-                            checkpoint,
-                            vec![interruption],
-                        )
-                        .await
-                        {
-                            Ok((checkpoint, _)) => checkpoint,
-                            Err(outcome) => return (outcome, usage),
-                        };
-                        continue 'model;
-                    },
-                    result = &mut cycle => break result,
-                }
-            };
-            let cycle = match cycle {
-                Ok(cycle) => cycle,
-                Err(ModelCycleFailure {
-                    failure,
-                    usage: cycle_usage,
-                    ..
-                }) => {
-                    if let Some(cycle_usage) = cycle_usage {
-                        accumulate_usage(&mut usage, cycle_usage);
+
+                        let delay = tokio::time::sleep(MODEL_RETRY_DELAY);
+                        tokio::pin!(delay);
+                        loop {
+                            tokio::select! {
+                                biased;
+                                command = client.commands.recv() => {
+                                    let interruption = match command {
+                                        Some(RunCommand::InsertMessages(insertion)) => {
+                                            pending_insertions.push(insertion);
+                                            continue;
+                                        }
+                                        Some(RunCommand::BreakMessages(messages)) => messages,
+                                        Some(RunCommand::Cancel) => {
+                                            let _ = emit(client, RunEvent::CycleInterrupted).await;
+                                            return (RunOutcome::Cancelled, usage);
+                                        }
+                                        Some(RunCommand::ToolResult(_)) => {
+                                            return (
+                                                RunOutcome::Failed(RunFailure::Protocol(
+                                                    "received a tool result while waiting to retry the model".into(),
+                                                )),
+                                                usage,
+                                            );
+                                        }
+                                        None => return (client_failure(), usage),
+                                    };
+                                    if emit(client, RunEvent::CycleInterrupted).await.is_err() {
+                                        return (client_failure(), usage);
+                                    }
+                                    checkpoint = match super::messages::append_batches(
+                                        &self.store,
+                                        prepared,
+                                        client,
+                                        cancellation,
+                                        checkpoint,
+                                        std::mem::take(&mut pending_insertions),
+                                    )
+                                    .await
+                                    {
+                                        Ok((checkpoint, _)) => checkpoint,
+                                        Err(outcome) => return (outcome, usage),
+                                    };
+                                    checkpoint = match super::messages::append_batches(
+                                        &self.store,
+                                        prepared,
+                                        client,
+                                        cancellation,
+                                        checkpoint,
+                                        vec![interruption],
+                                    )
+                                    .await
+                                    {
+                                        Ok((checkpoint, _)) => checkpoint,
+                                        Err(outcome) => return (outcome, usage),
+                                    };
+                                    continue 'model;
+                                }
+                                _ = cancellation.cancelled() => {
+                                    let _ = emit(client, RunEvent::CycleInterrupted).await;
+                                    return (RunOutcome::Cancelled, usage);
+                                }
+                                _ = &mut delay => break,
+                            }
+                        }
                     }
-                    if cancellation.is_cancelled() {
-                        let _ = emit(client, RunEvent::CycleInterrupted).await;
-                        return (RunOutcome::Cancelled, usage);
-                    }
-                    return (RunOutcome::Failed(failure), usage);
                 }
             };
             if let Some(cycle_usage) = cycle.usage {

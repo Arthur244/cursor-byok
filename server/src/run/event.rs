@@ -104,6 +104,10 @@ pub enum RunEvent {
     AutoCompactionStarted,
     AutoCompactionCompleted,
     CycleInterrupted,
+    ModelAttemptFailed {
+        attempt: u32,
+        message: String,
+    },
     TextStart,
     TextDelta(String),
     TextEnd,

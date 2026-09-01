@@ -248,6 +248,7 @@ mod tests {
             name: "Task".into(),
             arguments_text: arguments_text.into(),
             arguments: serde_json::Value::Null,
+            argument_error: None,
         }
     }
 

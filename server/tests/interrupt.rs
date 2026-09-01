@@ -1580,6 +1580,7 @@ fn text_response(text: &str) -> Vec<ModelEvent> {
         ModelEvent::TextEnd,
         ModelEvent::Usage(Usage {
             input_tokens: Some(1),
+            context_input_tokens: Some(1),
             output_tokens: Some(1),
             total_tokens: Some(2),
             ..Default::default()

@@ -25,9 +25,11 @@ use cursor_server::{
         OPENAI_CHAT_ENDPOINT,
     },
     provider::{FinishReason, ModelEvent},
+    run::consume_model_cycle,
 };
 use prost::Message;
 use serde_json::json;
+use tokio_util::sync::CancellationToken;
 
 fn call(id: &str, name: &str) -> ToolCall {
     ToolCall {
@@ -37,6 +39,7 @@ fn call(id: &str, name: &str) -> ToolCall {
         name: name.into(),
         arguments_text: "{}".into(),
         arguments: json!({}),
+        argument_error: None,
     }
 }
 
@@ -68,6 +71,37 @@ fn mcp_context(server: &str, provider: &str, tool: &str) -> ExecContext {
     context
 }
 
+#[tokio::test]
+async fn malformed_provider_tool_json_is_kept_as_a_tool_validation_error() {
+    let stream = Box::pin(futures_util::stream::iter(vec![
+        Ok(ModelEvent::Start {
+            model_call_id: "model-call".into(),
+        }),
+        Ok(ModelEvent::ToolCallStart {
+            index: 0,
+            call_id: "call-malformed".into(),
+            name: "Read".into(),
+        }),
+        Ok(ModelEvent::ToolCallArgumentsDelta {
+            index: 0,
+            delta: "{\"path\":".into(),
+        }),
+        Ok(ModelEvent::ToolCallEnd { index: 0 }),
+        Ok(ModelEvent::Done(FinishReason::ToolUse)),
+    ]));
+    let (events, _receiver) = tokio::sync::mpsc::channel(16);
+    let result = consume_model_cycle(stream, &events, &CancellationToken::new())
+        .await
+        .expect("malformed tool JSON must not fail the model cycle");
+
+    assert_eq!(result.calls.len(), 1);
+    assert!(result.calls[0]
+        .argument_error
+        .as_deref()
+        .is_some_and(|message| message.contains("not valid JSON")));
+    assert_eq!(result.calls[0].arguments, json!({}));
+}
+
 #[test]
 fn dynamic_mcp_call_routes_to_the_captured_exec_message() {
     let call = ToolCall {
@@ -77,6 +111,7 @@ fn dynamic_mcp_call_routes_to_the_captured_exec_message() {
         name: "mcp_repo_lookup".into(),
         arguments_text: "{\"query\":\"x\"}".into(),
         arguments: json!({"query": "x"}),
+        argument_error: None,
     };
     let definition = pb::McpToolDefinition {
         name: "mcp_repo_lookup".into(),
@@ -370,6 +405,52 @@ async fn unknown_mcp_descriptor_returns_a_tool_error_without_client_discovery() 
         .expect("missing descriptor should complete as a tool error");
     assert!(completion.result().is_error);
     assert!(completion.result().content.contains("descriptor not found"));
+}
+
+#[tokio::test]
+async fn invalid_tool_arguments_complete_as_tool_errors() {
+    let dispatcher = ToolDispatcher::new(CursorToolRuntime::default());
+    let completed = HashSet::new();
+    let started = HashSet::new();
+    let state = || ToolBatchState {
+        completed: &completed,
+        started: &started,
+        response_text: "",
+        response_thinking: "",
+    };
+
+    let mut malformed = call("call-malformed", "Read");
+    malformed.argument_error = Some("Read arguments are not valid JSON".into());
+    let mut missing = call("call-missing", "Shell");
+    missing.arguments = json!({"description": "missing command"});
+    let mut wrong_type = call("call-type", "Shell");
+    wrong_type.arguments = json!({"command": 42});
+    let mut invalid_timeout = call("call-timeout", "Shell");
+    invalid_timeout.arguments = json!({"command": "pwd", "block_until_ms": -1});
+
+    for (invocation, expected) in [
+        (malformed, "not valid JSON"),
+        (missing, "missing command"),
+        (wrong_type, "missing command"),
+        (invalid_timeout, "out of range"),
+    ] {
+        let dispatched = dispatcher
+            .start_batch(
+                &[invocation],
+                state(),
+                &[],
+                &BTreeMap::new(),
+                &exec_context(),
+            )
+            .await
+            .unwrap();
+        let completion = dispatched[0]
+            .completion
+            .as_ref()
+            .expect("invalid arguments must complete as a tool error");
+        assert!(completion.result().is_error);
+        assert!(completion.result().content.contains(expected));
+    }
 }
 
 #[tokio::test]
@@ -701,12 +782,15 @@ async fn an_exec_result_must_match_the_reserved_tool() {
         },
         &pending,
     )
-    .await;
-    let Err(error) = result else {
-        panic!("mismatched result must fail")
+    .await
+    .unwrap();
+    let codec::ClientExecEvent::Completed(completion) = result else {
+        panic!("mismatched result must complete as a tool error")
     };
-    assert!(error
-        .to_string()
+    assert!(completion.result().is_error);
+    assert!(completion
+        .result()
+        .content
         .contains("unexpected Exec result for tool Read"));
     assert!(pending.exec_call(id).await.is_none());
     assert_eq!(pending.completed_call(id).await.as_deref(), Some("call-1"));
@@ -718,15 +802,13 @@ async fn an_exec_result_must_match_the_reserved_tool() {
         },
         &pending,
     )
-    .await;
-    let Err(duplicate) = duplicate else {
-        panic!("duplicate terminal result must fail")
-    };
-    assert!(duplicate.to_string().contains("duplicate terminal"));
+    .await
+    .unwrap();
+    assert!(matches!(duplicate, codec::ClientExecEvent::Pending));
 }
 
 #[tokio::test]
-async fn unknown_exec_id_is_a_protocol_error() {
+async fn unknown_exec_id_is_ignored() {
     let result = codec::client_event(
         &pb::ExecClientMessage {
             id: 999,
@@ -737,15 +819,9 @@ async fn unknown_exec_id_is_a_protocol_error() {
         },
         &CursorToolRuntime::default(),
     )
-    .await;
-    let Err(error) = result else {
-        panic!("unknown Exec id must fail")
-    };
-    assert!(matches!(
-        error,
-        cursor_server::Error::Protocol(message)
-            if message == "unknown ExecClientMessage id: 999"
-    ));
+    .await
+    .unwrap();
+    assert!(matches!(result, codec::ClientExecEvent::Pending));
 }
 
 #[tokio::test]

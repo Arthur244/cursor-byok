@@ -62,6 +62,7 @@ async fn summarize_replaces_model_history_and_preserves_cursor_history() {
         ModelEvent::TextEnd,
         ModelEvent::Usage(Usage {
             input_tokens: Some(4_012),
+            context_input_tokens: Some(4_012),
             output_tokens: Some(9),
             total_tokens: Some(4_021),
             ..Default::default()
@@ -442,6 +443,7 @@ fn text_response(text: &str, input: u64, output: u64) -> Vec<ModelEvent> {
         ModelEvent::TextEnd,
         ModelEvent::Usage(Usage {
             input_tokens: Some(input),
+            context_input_tokens: Some(input),
             output_tokens: Some(output),
             total_tokens: Some(input + output),
             ..Default::default()

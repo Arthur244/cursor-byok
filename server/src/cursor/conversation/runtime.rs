@@ -11,7 +11,7 @@ use crate::{
         protocol::proto::agent::v1 as pb,
         services::{blob_sync::BlobSynchronizer, context_sync::RequestContextSynchronizer},
         tools::{
-            codec,
+            codec, compat,
             runtime::CursorToolRuntime,
             tool_call_result::{tool_result_channel, ToolResultReceiver, ToolResultSender},
             ClientToolEvent, ToolDispatcher,
@@ -262,17 +262,18 @@ impl ConversationRuntime {
                                                     .take_exec(throw.id)
                                                     .await
                                                 {
-                                                    Some(pending) => generation.results.send_error(
-                                                        crate::Error::Protocol(format!(
-                                                            "Exec {} failed: {}",
-                                                            pending.call.call_id, throw.error
-                                                        )),
+                                                    Some(pending) => generation.results.send(
+                                                        compat::failure_with_message(
+                                                            &pending.call,
+                                                            format!(
+                                                                "Exec {} failed: {}",
+                                                                pending.call.call_id, throw.error
+                                                            ),
+                                                        ),
                                                     ),
-                                                    None => generation.results.send_error(
-                                                        crate::Error::Protocol(format!(
-                                                            "unknown ExecClientThrow id: {}",
-                                                            throw.id
-                                                        )),
+                                                    None => tracing::warn!(
+                                                        id = throw.id,
+                                                        "ignoring failure for unknown tool execution"
                                                     ),
                                                 }
                                             }

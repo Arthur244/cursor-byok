@@ -542,6 +542,7 @@ mod tests {
             name: "Bash".into(),
             arguments_text: String::new(),
             arguments: json!({ "command": "ls -la" }),
+            argument_error: None,
         };
         let message = request(1, &call, &ExecContext::default()).unwrap();
         let Some(pb::agent_server_message::Message::ExecServerMessage(exec)) = message.message

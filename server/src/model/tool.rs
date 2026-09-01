@@ -19,6 +19,7 @@ pub struct ToolCall {
     pub name: String,
     pub arguments_text: String,
     pub arguments: Value,
+    pub argument_error: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

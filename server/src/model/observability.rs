@@ -9,6 +9,7 @@ mod usage {
     #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
     pub struct Usage {
         pub input_tokens: Option<u64>,
+        pub context_input_tokens: Option<u64>,
         pub output_tokens: Option<u64>,
         pub total_tokens: Option<u64>,
         pub cache_read_tokens: Option<u64>,
@@ -19,6 +20,7 @@ mod usage {
     impl AddAssign for Usage {
         fn add_assign(&mut self, rhs: Self) {
             self.input_tokens = sum(self.input_tokens, rhs.input_tokens);
+            self.context_input_tokens = sum(self.context_input_tokens, rhs.context_input_tokens);
             self.output_tokens = sum(self.output_tokens, rhs.output_tokens);
             self.total_tokens = sum(self.total_tokens, rhs.total_tokens);
             self.cache_read_tokens = sum(self.cache_read_tokens, rhs.cache_read_tokens);
