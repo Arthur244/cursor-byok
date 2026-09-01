@@ -191,6 +191,172 @@ async fn summarize_replaces_model_history_and_preserves_cursor_history() {
     );
 }
 
+#[tokio::test]
+async fn automatic_compaction_preflights_provider_input_and_records_rebuilt_tokens() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let model = store
+        .create_model(&ModelConfigInput {
+            sort_order: 0,
+            display_name: "Auto Compact Model".into(),
+            group_name: None,
+            model_type: ModelType::OpenAi,
+            base_url: "https://example.com/v1/chat/completions".into(),
+            use_full_url: true,
+            api_key: "test-key".into(),
+            tooltip_data: "Auto Compact Model".into(),
+            model_id: "auto-compact-model".into(),
+            reasoning_effort: None,
+            openai_endpoint: OPENAI_CHAT_ENDPOINT.into(),
+            openai_extra_params_enabled: false,
+            openai_extra_params: serde_json::json!({}),
+            custom_headers_enabled: false,
+            custom_headers: serde_json::json!({}),
+            anthropic_extra_params_enabled: false,
+            anthropic_extra_params: serde_json::json!({}),
+            context_window_tokens: Some(100_000),
+            max_completion_tokens: None,
+            anthropic_max_tokens: None,
+            anthropic_thinking_effort: None,
+            thinking_budget_tokens: None,
+        })
+        .await
+        .unwrap();
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(text_response(&"x".repeat(400_000), 150_000, 1_000));
+    provider.push(text_response("automatic durable summary", 120_000, 20));
+    provider.push(text_response("continued after compaction", 20_000, 20));
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store,
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+
+    let first = run(
+        &registry,
+        "auto-first",
+        user_request(
+            "auto-conversation",
+            "auto-user-1",
+            "start",
+            &model.model_hash,
+            None,
+        ),
+    )
+    .await;
+    let first_state = first.checkpoints.last().unwrap().clone();
+    assert!(first_state.token_details.as_ref().unwrap().used_tokens > 100_000);
+
+    let second = run(
+        &registry,
+        "auto-second",
+        user_request(
+            "auto-conversation",
+            "auto-user-2",
+            "continue",
+            &model.model_hash,
+            Some(first_state),
+        ),
+    )
+    .await;
+    assert_eq!(second.summary_started, 1);
+    assert_eq!(second.summary_completed, 1);
+    let compacted_tokens = second
+        .checkpoints
+        .iter()
+        .filter_map(|state| state.token_details.as_ref())
+        .map(|details| details.used_tokens)
+        .find(|tokens| *tokens > 0 && *tokens < 100_000)
+        .expect("compacted checkpoint must record rebuilt context tokens");
+    assert!(compacted_tokens < 90_000);
+
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 3);
+    assert!(!requests[0].prompt.tools.is_empty());
+    assert!(requests[1].prompt.tools.is_empty());
+    assert!(!requests[2].prompt.tools.is_empty());
+    assert!(requests[1]
+        .history
+        .iter()
+        .any(|message| match &message.content {
+            ProjectedContent::Assistant { text, .. } => text.len() == 400_000,
+            _ => false,
+        }));
+    assert!(requests[2]
+        .history
+        .iter()
+        .all(|message| match &message.content {
+            ProjectedContent::Assistant { text, .. } => text.len() != 400_000,
+            _ => true,
+        }));
+}
+
+#[tokio::test]
+async fn irreducibly_oversized_current_input_fails_before_provider_dispatch() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let model = store
+        .create_model(&ModelConfigInput {
+            sort_order: 0,
+            display_name: "Overflow Model".into(),
+            group_name: None,
+            model_type: ModelType::OpenAi,
+            base_url: "https://example.com/v1/chat/completions".into(),
+            use_full_url: true,
+            api_key: "test-key".into(),
+            tooltip_data: "Overflow Model".into(),
+            model_id: "overflow-model".into(),
+            reasoning_effort: None,
+            openai_endpoint: OPENAI_CHAT_ENDPOINT.into(),
+            openai_extra_params_enabled: false,
+            openai_extra_params: serde_json::json!({}),
+            custom_headers_enabled: false,
+            custom_headers: serde_json::json!({}),
+            anthropic_extra_params_enabled: false,
+            anthropic_extra_params: serde_json::json!({}),
+            context_window_tokens: Some(100_000),
+            max_completion_tokens: None,
+            anthropic_max_tokens: None,
+            anthropic_thinking_effort: None,
+            thinking_budget_tokens: None,
+        })
+        .await
+        .unwrap();
+    let provider = fake_provider::FakeProvider::default();
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store,
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+
+    let output = run(
+        &registry,
+        "overflow-request",
+        user_request(
+            "overflow-conversation",
+            "overflow-user",
+            &"x".repeat(400_000),
+            &model.model_hash,
+            None,
+        ),
+    )
+    .await;
+
+    assert!(provider.requests().is_empty());
+    assert_eq!(output.summary_started, 0);
+    assert_eq!(output.summary_completed, 0);
+}
+
 #[derive(Default)]
 struct Output {
     checkpoints: Vec<pb::ConversationStateStructure>,

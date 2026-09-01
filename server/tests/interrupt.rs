@@ -1021,7 +1021,7 @@ async fn injected_user_context_interrupts_automatic_compaction() {
             custom_headers: serde_json::json!({}),
             anthropic_extra_params_enabled: false,
             anthropic_extra_params: serde_json::json!({}),
-            context_window_tokens: Some(10_001),
+            context_window_tokens: Some(100_000),
             max_completion_tokens: None,
             anthropic_max_tokens: None,
             anthropic_thinking_effort: None,
@@ -1030,7 +1030,8 @@ async fn injected_user_context_interrupts_automatic_compaction() {
         .await
         .unwrap();
     let provider = fake_provider::FakeProvider::default();
-    provider.push(text_response("seed answer"));
+    let seed_answer = "x".repeat(400_000);
+    provider.push(text_response(&seed_answer));
     provider.push_pending();
     provider.push(text_response("continued after compacting injection"));
     let assets = PromptAssets::load(
@@ -1045,7 +1046,7 @@ async fn injected_user_context_interrupts_automatic_compaction() {
         PromptCompiler::new(assets),
     );
 
-    let seed_state = run_to_end(
+    run_to_end(
         &registry,
         "seed-request",
         client_run_for_model(
@@ -1065,7 +1066,7 @@ async fn injected_user_context_interrupts_automatic_compaction() {
         "inject-during-compaction",
         "compaction-injection-conversation",
         &model.model_hash,
-        Some(seed_state),
+        None,
     );
     let Some(pb::agent_client_message::Message::RunRequest(request)) =
         compacting_request.message.as_mut()
@@ -1075,9 +1076,17 @@ async fn injected_user_context_interrupts_automatic_compaction() {
     request.requested_model.as_mut().unwrap().parameters.push(
         pb::requested_model::ModelParameterValue {
             id: "context".into(),
-            value: "10001".into(),
+            value: "100000".into(),
         },
     );
+    let Some(pb::conversation_action::Action::UserMessageAction(action)) = request
+        .action
+        .as_mut()
+        .and_then(|action| action.action.as_mut())
+    else {
+        panic!("expected UserMessageAction")
+    };
+    action.user_message.as_mut().unwrap().message_id = "compaction-user".into();
     handle
         .command(TransportCommand::Append {
             seqno: 0,
@@ -1133,10 +1142,15 @@ async fn injected_user_context_interrupts_automatic_compaction() {
 
     let requests = provider.requests();
     assert_eq!(requests.len(), 3);
-    assert!(requests[1]
-        .prompt
-        .instructions
-        .starts_with("Summarize the conversation for the next model turn."));
+    assert!(
+        requests[1]
+            .prompt
+            .instructions
+            .starts_with("Summarize the conversation for the next model turn."),
+        "second request was not compaction: instructions={:?}, history={:?}",
+        requests[1].prompt.instructions,
+        requests[1].history
+    );
     assert!(!serde_json::to_string(&requests[1].history)
         .unwrap()
         .contains("injected follow-up"));

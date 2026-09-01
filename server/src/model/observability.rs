@@ -6,8 +6,6 @@ mod usage {
 
     use serde::{Deserialize, Serialize};
 
-    use super::ProviderType;
-
     #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
     pub struct Usage {
         pub input_tokens: Option<u64>,
@@ -16,21 +14,6 @@ mod usage {
         pub cache_read_tokens: Option<u64>,
         pub cache_write_tokens: Option<u64>,
         pub reasoning_tokens: Option<u64>,
-    }
-
-    impl Usage {
-        /// Returns the provider-visible input context without counting cached tokens twice.
-        pub(crate) fn context_input_tokens(self, provider: ProviderType) -> Option<u64> {
-            let input = self.input_tokens?;
-            match provider {
-                ProviderType::OpenAiChat | ProviderType::OpenAiResponses | ProviderType::Plugin => {
-                    Some(input)
-                }
-                ProviderType::Anthropic => input
-                    .checked_add(self.cache_read_tokens.unwrap_or_default())?
-                    .checked_add(self.cache_write_tokens.unwrap_or_default()),
-            }
-        }
     }
 
     impl AddAssign for Usage {
@@ -53,7 +36,7 @@ pub use usage::*;
 mod llm_call {
     use serde::Serialize;
 
-    use super::{ProviderType, Usage};
+    use super::ProviderType;
 
     #[derive(Clone, Debug)]
     pub struct NewLlmCall {
@@ -73,14 +56,6 @@ mod llm_call {
         pub message_count: usize,
         pub tool_count: usize,
         pub detailed: bool,
-    }
-
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub(crate) struct LlmCallUsageAnchor {
-        pub request_type: ProviderType,
-        pub usage: Usage,
-        pub message_count: usize,
-        pub tool_count: usize,
     }
 
     #[derive(Clone, Debug, Serialize)]

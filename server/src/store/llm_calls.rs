@@ -1,13 +1,8 @@
 //! Persists provider call payloads, timing, and usage.
-use std::str::FromStr;
-
 use sqlx::Row;
 
 use crate::{
-    model::{
-        ConversationId, LlmCallRequest, LlmCallResponseChunk, LlmCallSummary, LlmCallUsageAnchor,
-        NewLlmCall, ProviderType, Usage,
-    },
+    model::{LlmCallRequest, LlmCallResponseChunk, LlmCallSummary, NewLlmCall, Usage},
     Result,
 };
 
@@ -288,41 +283,6 @@ impl Store {
             .transpose()
     }
 
-    pub(crate) async fn latest_llm_call_usage_anchor(
-        &self,
-        conversation_id: &ConversationId,
-        model_hash: &str,
-    ) -> Result<Option<LlmCallUsageAnchor>> {
-        let row = sqlx::query(
-            r#"SELECT request_type, usage_json, message_count, tool_count
-               FROM llm_calls
-               WHERE conversation_id = ?
-                 AND model_hash = ?
-                 AND status = 'completed'
-                 AND input_tokens IS NOT NULL
-                 AND usage_json IS NOT NULL
-               ORDER BY rowid DESC
-               LIMIT 1"#,
-        )
-        .bind(conversation_id.as_str())
-        .bind(model_hash)
-        .fetch_optional(&self.pool)
-        .await?;
-        row.map(|row| {
-            let message_count =
-                usize::try_from(row.try_get::<i64, _>("message_count")?).unwrap_or(usize::MAX);
-            let tool_count =
-                usize::try_from(row.try_get::<i64, _>("tool_count")?).unwrap_or(usize::MAX);
-            Ok(LlmCallUsageAnchor {
-                request_type: ProviderType::from_str(row.try_get("request_type")?)?,
-                usage: serde_json::from_str(row.try_get("usage_json")?)?,
-                message_count,
-                tool_count,
-            })
-        })
-        .transpose()
-    }
-
     pub async fn llm_call_request(&self, call_id: &str) -> Result<Option<LlmCallRequest>> {
         let row = sqlx::query(
             "SELECT headers_json, body_json, byte_count FROM llm_call_requests WHERE call_id = ?",
@@ -416,6 +376,7 @@ fn summary_from_row(row: sqlx::sqlite::SqliteRow) -> Result<LlmCallSummary> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::ProviderType;
 
     /// 插件模型不在 model_configs 中,调用记录必须照常落库并可按其稳定 ID 筛选。
     #[tokio::test]

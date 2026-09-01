@@ -161,7 +161,6 @@ impl RunEngine {
             };
         }
 
-        let mut auto_compacted = prepared.action == RunAction::Compact;
         'model: loop {
             if cancellation.is_cancelled() {
                 return (RunOutcome::Cancelled, usage);
@@ -170,31 +169,13 @@ impl RunEngine {
                 Ok(messages) => messages,
                 Err(error) => return (RunOutcome::Failed(error.into()), usage),
             };
-            let context_anchor = if !auto_compacted {
-                match self
-                    .store
-                    .latest_llm_call_usage_anchor(
-                        &prepared.conversation_id,
-                        &prepared.model.model_id,
-                    )
-                    .await
-                {
-                    Ok(anchor) => {
-                        anchor.and_then(super::compaction::ContextUsageAnchor::from_llm_call)
-                    }
-                    Err(error) => return (RunOutcome::Failed(error.into()), usage),
-                }
-            } else {
-                None
-            };
             let history = match crate::model::project_messages(&messages) {
                 Ok(history) => history,
                 Err(error) => return (RunOutcome::Failed(error.into()), usage),
             };
-            if !auto_compacted
-                && super::compaction::should_compact(prepared, &messages, &history, context_anchor)
+            if prepared.action != RunAction::Compact
+                && super::compaction::should_compact(prepared, &history)
             {
-                auto_compacted = true;
                 match self
                     .auto_compact(prepared, checkpoint, &messages, client, cancellation)
                     .await
@@ -583,7 +564,15 @@ impl RunEngine {
         let (compactable, retained_request_context) =
             super::compaction::partition(messages, &current_ids);
         if compactable.is_empty() {
-            return Ok((checkpoint, None));
+            let projected = crate::model::project_messages(messages)
+                .map_err(|error| RunOutcome::Failed(error.into()))?;
+            let message = super::compaction::validate_compacted(prepared, &projected)
+                .err()
+                .unwrap_or_else(|| {
+                    "context overflow after compaction: no conversation history can be compacted"
+                        .into()
+                });
+            return Err(RunOutcome::Failed(RunFailure::Protocol(message)));
         }
 
         emit(client, RunEvent::AutoCompactionStarted)
@@ -689,7 +678,7 @@ impl RunEngine {
                 )
             }
         };
-        let event_id = format!("summary:auto:{}", prepared.run_id);
+        let event_id = format!("summary:auto:{}:{provider_call_index}", prepared.run_id);
         let summary_message = CanonicalMessage {
             message_id: format!("runtime:{event_id}"),
             role: Role::User,
@@ -704,6 +693,10 @@ impl RunEngine {
         let mut replacement = retained_request_context.into_iter().collect::<Vec<_>>();
         replacement.push(summary_message);
         replacement.extend(prepared.initial_messages.iter().cloned());
+        let projected_replacement = crate::model::project_messages(&replacement)
+            .map_err(|error| RunOutcome::Failed(error.into()))?;
+        super::compaction::validate_compacted(prepared, &projected_replacement)
+            .map_err(|message| RunOutcome::Failed(RunFailure::Protocol(message)))?;
         let mut checkpoint = self
             .store
             .replace_checkpoint(

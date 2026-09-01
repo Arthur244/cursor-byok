@@ -1,62 +1,53 @@
-//! Decides when to compact context and builds a stable fallback summary.
+//! Decides when to compact provider-visible context and builds a stable fallback summary.
 
 use std::collections::HashSet;
 
-use crate::model::{CanonicalMessage, LlmCallUsageAnchor, PreparedRun, ProjectedMessage};
+use crate::model::{estimate_context_tokens, CanonicalMessage, PreparedRun, ProjectedMessage};
 
 const FALLBACK_CHARS: usize = 12_000;
 
+pub(super) const RESERVE_TOKENS: u64 = 10_000;
 pub(super) const OUTPUT_TOKENS: u64 = 4_096;
 pub(super) const INSTRUCTIONS: &str = "Summarize the conversation for the next model turn. Preserve goals, constraints, decisions, files, commands, errors, results, and unfinished work. Do not call tools. Return only the concise durable summary.";
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct ContextUsageAnchor {
-    input_tokens: u64,
-    message_count: usize,
-    tool_count: usize,
+pub(super) fn input_budget(prepared: &PreparedRun) -> Option<u64> {
+    prepared
+        .model
+        .context_window_tokens
+        .map(|window| window.saturating_sub(RESERVE_TOKENS))
 }
 
-impl ContextUsageAnchor {
-    pub(super) fn from_llm_call(anchor: LlmCallUsageAnchor) -> Option<Self> {
-        Some(Self {
-            input_tokens: anchor.usage.context_input_tokens(anchor.request_type)?,
-            message_count: anchor.message_count,
-            tool_count: anchor.tool_count,
-        })
-    }
+pub(super) fn estimated_tokens(
+    prepared: &PreparedRun,
+    projected_messages: &[ProjectedMessage],
+) -> u64 {
+    estimate_context_tokens(&prepared.prompt, projected_messages)
 }
 
 pub(super) fn should_compact(
     prepared: &PreparedRun,
-    messages: &[CanonicalMessage],
     projected_messages: &[ProjectedMessage],
-    anchor: Option<ContextUsageAnchor>,
 ) -> bool {
-    let Some(context_window) = prepared.model.context_window_tokens else {
+    let Some(budget) = input_budget(prepared) else {
         return false;
     };
-    if context_window == 0 || messages.len() <= prepared.initial_messages.len() {
-        return false;
+    estimated_tokens(prepared, projected_messages) > budget
+}
+
+pub(super) fn validate_compacted(
+    prepared: &PreparedRun,
+    projected_messages: &[ProjectedMessage],
+) -> std::result::Result<u64, String> {
+    let estimated = estimated_tokens(prepared, projected_messages);
+    let Some(budget) = input_budget(prepared) else {
+        return Ok(estimated);
+    };
+    if estimated <= budget {
+        return Ok(estimated);
     }
-    let estimated_input = anchor
-        .filter(|anchor| {
-            anchor.message_count <= projected_messages.len()
-                && anchor.tool_count == prepared.prompt.tools.len()
-        })
-        .map(|anchor| {
-            anchor
-                .input_tokens
-                .saturating_add(estimate_serialized_tokens(
-                    &serde_json::to_string(&projected_messages[anchor.message_count..])
-                        .unwrap_or_default(),
-                ))
-        })
-        .unwrap_or_else(|| {
-            estimate_serialized_tokens(
-                &serde_json::to_string(&(&prepared.prompt, messages)).unwrap_or_default(),
-            )
-        });
-    estimated_input > context_window
+    Err(format!(
+        "context overflow after compaction: estimated input {estimated} tokens exceeds budget {budget} tokens"
+    ))
 }
 
 pub(super) fn partition(
@@ -95,15 +86,6 @@ pub(super) fn fallback_summary(messages: &[CanonicalMessage]) -> String {
     )
 }
 
-fn estimate_serialized_tokens(serialized: &str) -> u64 {
-    serialized
-        .chars()
-        .fold(0_u64, |units, character| {
-            units.saturating_add(if character.is_ascii() { 273 } else { 550 })
-        })
-        .div_ceil(1_000)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,11 +94,10 @@ mod tests {
         RunAction, RunId, RunKind,
     };
 
-    #[test]
-    fn automatic_compaction_runs_for_start_and_resume_actions_after_the_limit() {
+    fn prepared(context_window_tokens: u64) -> PreparedRun {
         let mut model = ModelSpec::new("model");
-        model.context_window_tokens = Some(200_000);
-        let mut prepared = PreparedRun {
+        model.context_window_tokens = Some(context_window_tokens);
+        PreparedRun {
             run_id: RunId::new("run"),
             cursor_request_id: None,
             conversation_id: ConversationId::new("conversation"),
@@ -129,50 +110,50 @@ mod tests {
             initial_messages: Vec::new(),
             action: RunAction::Start,
             base_checkpoint_id: CheckpointId(1),
-        };
+        }
+    }
+
+    #[test]
+    fn automatic_compaction_uses_fixed_reserve_for_every_action() {
         let messages = vec![CanonicalMessage::text(
             "user",
             Role::User,
             Origin::Runtime,
-            "hello",
+            "x".repeat(40_000),
         )];
         let projected = project_messages(&messages).unwrap();
-        let tail_tokens = estimate_serialized_tokens(&serde_json::to_string(&projected).unwrap());
-        let anchor = |estimated_input| {
-            Some(ContextUsageAnchor {
-                input_tokens: estimated_input - tail_tokens,
-                message_count: 0,
-                tool_count: 0,
-            })
-        };
+        let estimated = estimate_context_tokens(&prepared(1).prompt, &projected);
+        let mut prepared = prepared(estimated + RESERVE_TOKENS);
 
-        assert!(!should_compact(
-            &prepared,
-            &messages,
-            &projected,
-            anchor(199_999)
-        ));
-        assert!(!should_compact(
-            &prepared,
-            &messages,
-            &projected,
-            anchor(200_000)
-        ));
-        assert!(should_compact(
-            &prepared,
-            &messages,
-            &projected,
-            anchor(200_001)
-        ));
+        assert!(!should_compact(&prepared, &projected));
+        prepared.model.context_window_tokens = Some(estimated + RESERVE_TOKENS - 1);
+        assert!(should_compact(&prepared, &projected));
 
         prepared.action = RunAction::Resume {
             pending_tool_round: None,
         };
-        assert!(should_compact(
-            &prepared,
-            &messages,
-            &projected,
-            anchor(200_001)
-        ));
+        assert!(should_compact(&prepared, &projected));
+    }
+
+    #[test]
+    fn compacted_history_is_validated_against_the_same_budget() {
+        let messages = vec![CanonicalMessage::text(
+            "user",
+            Role::User,
+            Origin::Runtime,
+            "x".repeat(40_000),
+        )];
+        let projected = project_messages(&messages).unwrap();
+        let estimated = estimate_context_tokens(&prepared(1).prompt, &projected);
+
+        assert_eq!(
+            validate_compacted(&prepared(estimated + RESERVE_TOKENS), &projected),
+            Ok(estimated)
+        );
+        assert!(
+            validate_compacted(&prepared(estimated + RESERVE_TOKENS - 1), &projected)
+                .unwrap_err()
+                .contains("context overflow after compaction")
+        );
     }
 }
