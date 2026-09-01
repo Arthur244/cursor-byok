@@ -21,6 +21,7 @@ use super::{
 pub struct ProviderRouter {
     store: Store,
     plugins: PluginRegistry,
+    clients: crate::network::NetworkClients,
     request_timeout: Duration,
     stream_idle_timeout: Duration,
 }
@@ -29,12 +30,14 @@ impl ProviderRouter {
     pub fn new(
         store: Store,
         plugins: PluginRegistry,
+        clients: crate::network::NetworkClients,
         request_timeout: Duration,
         stream_idle_timeout: Duration,
     ) -> Self {
         Self {
             store,
             plugins,
+            clients,
             request_timeout,
             stream_idle_timeout,
         }
@@ -49,6 +52,7 @@ impl Provider for ProviderRouter {
     ) -> ProviderStream {
         let store = self.store.clone();
         let plugins = self.plugins.clone();
+        let clients = self.clients.clone();
         let request_timeout = self.request_timeout;
         let stream_idle_timeout = self.stream_idle_timeout;
         Box::pin(try_stream! {
@@ -91,7 +95,7 @@ impl Provider for ProviderRouter {
                         request_timeout,
                         allowed_body_fields: None,
                     };
-                    let client = crate::network::client_builder(&store).await?.timeout(request_timeout).build()?;
+                    let client = clients.provider_client(request_timeout).await?;
                     let provider = build_observed(&config, recorder.clone(), client)?;
                     (recorder, guard, provider.stream(routed, cancellation.clone()))
                 };

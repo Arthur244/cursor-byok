@@ -27,8 +27,11 @@ use crate::{
     Result,
 };
 
-pub fn router(registry: TransportRegistry) -> Result<Router> {
-    let proxy = CursorProxy::cursor(registry.store().clone())?;
+pub fn router(
+    registry: TransportRegistry,
+    clients: crate::network::NetworkClients,
+) -> Result<Router> {
+    let proxy = CursorProxy::cursor(clients);
     let knowledge = knowledge::KnowledgeService::managed()?;
     Ok(router_with_proxy(registry, proxy, knowledge))
 }

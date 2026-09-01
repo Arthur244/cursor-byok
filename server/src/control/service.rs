@@ -41,6 +41,7 @@ pub struct ControlService {
     provider: Arc<dyn Provider>,
     plugin_runtime: PluginRuntime,
     plugins: PluginRegistry,
+    clients: crate::network::NetworkClients,
     model_tests: Arc<Mutex<BTreeMap<String, CancellationToken>>>,
 }
 
@@ -151,6 +152,7 @@ impl ControlService {
         provider: Arc<dyn Provider>,
         plugin_runtime: PluginRuntime,
         plugins: PluginRegistry,
+        clients: crate::network::NetworkClients,
     ) -> Result<Self> {
         Ok(Self {
             cursor_harness: CursorHarness::new(store.clone())?,
@@ -158,6 +160,7 @@ impl ControlService {
             provider,
             plugin_runtime,
             plugins,
+            clients,
             model_tests: Arc::new(Mutex::new(BTreeMap::new())),
         })
     }
@@ -256,7 +259,7 @@ impl ControlService {
         disabled_ad_ids: Option<&str>,
         language: &str,
     ) -> Result<AdRuntime> {
-        let client = crate::network::client(&self.store).await?;
+        let client = self.clients.default_client().await?;
         let installation_id = self.store.installation_id().await?;
         let mut request = client
             .get(ADS_ENDPOINT)
@@ -281,7 +284,7 @@ impl ControlService {
     }
 
     pub(super) async fn dismiss_ad(&self, ad_id: &str, input: &AdDismissalInput) -> Result<()> {
-        let client = crate::network::client(&self.store).await?;
+        let client = self.clients.default_client().await?;
         let installation_id = self.store.installation_id().await?;
         let mut endpoint = Url::parse(ADS_ENDPOINT).map_err(|error| {
             Error::Config(format!("advertisement endpoint is invalid: {error}"))
@@ -510,7 +513,7 @@ impl ControlService {
     }
 
     pub async fn discover_models(&self, input: &ModelDiscoveryInput) -> Result<DiscoveredModels> {
-        let client = crate::network::client(&self.store).await?;
+        let client = self.clients.default_client().await?;
         let base_url = crate::model::normalize_request_url(&input.base_url)?;
         discover_models_from_endpoint(
             &client,
@@ -677,7 +680,9 @@ impl ControlService {
     }
 
     pub async fn set_proxy_settings(&self, settings: ProxySettingsInput) -> Result<ProxySettings> {
-        self.store.set_proxy_settings(settings).await
+        let settings = self.store.set_proxy_settings(settings).await?;
+        self.clients.invalidate().await;
+        Ok(settings)
     }
 
     pub async fn tab_settings(&self) -> Result<TabSettings> {
