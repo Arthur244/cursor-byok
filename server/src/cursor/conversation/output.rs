@@ -34,7 +34,7 @@ use crate::{
     Error, Result,
 };
 
-use super::{CompiledMessages, ConversationRegistry, MessageDelivery};
+use super::{CompiledMessages, ConversationRegistry, MessageDelivery, TransportFinish};
 use crate::cursor::transport::TransportHandle;
 
 pub struct ConversationOutput {
@@ -110,7 +110,7 @@ impl ConversationOutput {
         }
     }
 
-    pub async fn run(mut self) -> Result<()> {
+    pub async fn run(mut self) -> Result<TransportFinish> {
         let result = self.run_inner().await;
         if let Err(error) = &result {
             if !self.superseded.is_cancelled() {
@@ -143,7 +143,7 @@ impl ConversationOutput {
         result
     }
 
-    async fn run_inner(&mut self) -> Result<()> {
+    async fn run_inner(&mut self) -> Result<TransportFinish> {
         if self.context.compacting {
             self.handle.emit(&events::summary_started())?;
         }
@@ -175,7 +175,7 @@ impl ConversationOutput {
             if self.superseded.is_cancelled() {
                 worker.abort();
                 self.abort_execs().await;
-                return Ok(());
+                return Ok(TransportFinish::Cancelled);
             }
             let input = if let Ok(action) = self.runtime_actions.try_recv() {
                 Input::RuntimeAction(Some(Box::new(action)))
@@ -187,7 +187,7 @@ impl ConversationOutput {
                     _ = self.superseded.cancelled() => {
                         worker.abort();
                         self.abort_execs().await;
-                        return Ok(());
+                        return Ok(TransportFinish::Cancelled);
                     }
                     action = self.runtime_actions.recv() => Input::RuntimeAction(action.map(Box::new)),
                     event = self.core.events.recv() => Input::Event(event),
@@ -719,7 +719,7 @@ impl ConversationOutput {
                         if self.superseded.is_cancelled() {
                             worker.abort();
                             self.abort_execs().await;
-                            return Ok(());
+                            return Ok(TransportFinish::Cancelled);
                         }
                         return match outcome {
                             RunOutcome::Completed => {
@@ -735,8 +735,7 @@ impl ConversationOutput {
                                     for _ in 0..3 {
                                         self.checkpoint.publish(&self.handle, &checkpoint).await?;
                                     }
-                                    finish_success(&self.handle);
-                                    return Ok(());
+                                    return Ok(TransportFinish::Success);
                                 }
                                 let checkpoints = final_checkpoint.take().ok_or_else(|| {
                                     Error::Protocol("Completed without final state".into())
@@ -752,18 +751,17 @@ impl ConversationOutput {
                                     ttft_breakdown: None,
                                     message: Some(pb::agent_server_message::Message::ConversationCheckpointUpdate(checkpoints.settled)),
                                 })?;
-                                finish_success(&self.handle);
-                                Ok(())
+                                Ok(TransportFinish::Success)
                             }
                             RunOutcome::Cancelled => {
                                 worker.abort();
                                 self.abort_execs().await;
-                                finish_cancelled(&self.handle)
+                                Ok(TransportFinish::Cancelled)
                             }
                             RunOutcome::Failed(failure) => {
                                 worker.abort();
                                 self.abort_execs().await;
-                                finish_failed(&self.handle, &cursor_error(failure))
+                                Ok(TransportFinish::Failed(cursor_error(failure)))
                             }
                         };
                     }

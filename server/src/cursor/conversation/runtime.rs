@@ -23,13 +23,14 @@ use crate::{
 
 use super::{
     CompiledMessages, ConversationDependencies, ConversationOutput, ConversationOutputDependencies,
-    ConversationRegistry, MessageDelivery, TransportCommand,
+    ConversationRegistry, MessageDelivery, TransportCommand, TransportFinish,
 };
 
 pub struct ConversationRuntime;
 
 #[derive(Clone)]
 struct RunGeneration {
+    id: u64,
     superseded: CancellationToken,
     finished: CancellationToken,
     run: Arc<parking_lot::Mutex<Option<RunHandle>>>,
@@ -40,6 +41,14 @@ struct RunGeneration {
 }
 
 struct FinishGeneration(CancellationToken);
+
+struct TransportActorGuard(TransportHandle);
+
+impl Drop for TransportActorGuard {
+    fn drop(&mut self) {
+        self.0.close_transport();
+    }
+}
 
 impl Drop for FinishGeneration {
     fn drop(&mut self) {
@@ -54,6 +63,7 @@ impl ConversationRuntime {
         mut receiver: mpsc::Receiver<TransportCommand>,
     ) {
         tokio::spawn(async move {
+            let _actor_guard = TransportActorGuard(handle.clone());
             let dependencies = registry.dependencies().clone();
             let blob_sync = BlobSynchronizer::new(
                 handle.request_id().into(),
@@ -65,19 +75,47 @@ impl ConversationRuntime {
             let context_sync =
                 RequestContextSynchronizer::new(handle.clone(), dependencies.store.clone());
             let mut current = None::<RunGeneration>;
+            let mut next_generation = 1_u64;
+            let mut pending_finish = None::<(u64, TransportFinish)>;
+            let mut draining = false;
             loop {
-                let command = match receiver.recv().await {
-                    Some(command) => command,
-                    None => {
-                        handle.mark_disconnected();
-                        if let Some(generation) = current.as_ref() {
-                            generation.superseded.cancel();
-                            if let Some(run) = generation.run.lock().clone() {
-                                run.cancel();
+                let command = if draining {
+                    if !handle.admissions_drained() {
+                        tokio::select! {
+                            command = receiver.recv() => match command {
+                                Some(command) => command,
+                                None => {
+                                    finish_pending(&handle, &current, pending_finish.take());
+                                    break;
+                                }
+                            },
+                            _ = handle.wait_admissions_drained() => continue,
+                        }
+                    } else {
+                        handle.mark_draining();
+                        match receiver.try_recv() {
+                            Ok(command) => command,
+                            Err(mpsc::error::TryRecvError::Empty)
+                            | Err(mpsc::error::TryRecvError::Disconnected) => {
+                                finish_pending(&handle, &current, pending_finish.take());
+                                break;
                             }
                         }
-                        super::finish_cancelled(&handle).ok();
-                        break;
+                    }
+                } else {
+                    match receiver.recv().await {
+                        Some(command) => command,
+                        None => {
+                            handle.mark_disconnected();
+                            if let Some(generation) = current.as_ref() {
+                                generation.superseded.cancel();
+                                if let Some(run) = generation.run.lock().clone() {
+                                    run.cancel();
+                                }
+                            }
+                            super::finish_cancelled(&handle).ok();
+                            break;
+                        }
                     }
                 };
                 match command {
@@ -95,8 +133,16 @@ impl ConversationRuntime {
                         super::finish_cancelled(&handle).ok();
                         break;
                     }
-                    TransportCommand::Close => {
-                        break;
+                    TransportCommand::RunFinished { generation, finish } => {
+                        if !current
+                            .as_ref()
+                            .is_some_and(|current| current.id == generation)
+                        {
+                            continue;
+                        }
+                        handle.begin_close();
+                        pending_finish = Some((generation, finish));
+                        draining = true;
                     }
                     TransportCommand::Append { seqno, message } => {
                         for (_seqno, message) in inbox.push(seqno, *message) {
@@ -105,6 +151,11 @@ impl ConversationRuntime {
                                     Some(pb::agent_client_message::Message::RunRequest(
                                         request,
                                     )) => {
+                                        if draining {
+                                            handle.reopen();
+                                            draining = false;
+                                            pending_finish = None;
+                                        }
                                         if let Some(conversation_id) =
                                             request.conversation_id.as_deref()
                                         {
@@ -117,8 +168,6 @@ impl ConversationRuntime {
                                                     "invalid Cursor conversation id"
                                                 );
                                                 let _ = super::finish_failed(&handle, &error);
-                                                let _ =
-                                                    handle.command(TransportCommand::Close).await;
                                                 return;
                                             }
                                         }
@@ -150,6 +199,7 @@ impl ConversationRuntime {
                                             dependencies.web_cache.clone(),
                                         );
                                         let generation = RunGeneration {
+                                            id: next_generation,
                                             superseded: CancellationToken::new(),
                                             finished: CancellationToken::new(),
                                             run: Arc::new(parking_lot::Mutex::new(None)),
@@ -158,6 +208,7 @@ impl ConversationRuntime {
                                             tool_runtime,
                                             tools,
                                         };
+                                        next_generation = next_generation.saturating_add(1);
                                         current = Some(generation.clone());
                                         spawn_run_request(
                                             registry.clone(),
@@ -428,6 +479,34 @@ impl ConversationRuntime {
     }
 }
 
+fn finish_pending(
+    handle: &TransportHandle,
+    current: &Option<RunGeneration>,
+    pending: Option<(u64, TransportFinish)>,
+) {
+    let Some((generation, finish)) = pending else {
+        return;
+    };
+    if current
+        .as_ref()
+        .is_some_and(|current| current.id == generation)
+    {
+        finish_transport(handle, finish);
+    }
+}
+
+fn finish_transport(handle: &TransportHandle, finish: TransportFinish) {
+    match finish {
+        TransportFinish::Success => super::finish_success(handle),
+        TransportFinish::Failed(error) => {
+            let _ = super::finish_failed(handle, &error);
+        }
+        TransportFinish::Cancelled => {
+            let _ = super::finish_cancelled(handle);
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn spawn_run_request(
     registry: ConversationRegistry,
@@ -487,8 +566,12 @@ fn spawn_run_request(
                     %error,
                     "failed to prepare Cursor Run"
                 );
-                let _ = super::finish_failed(&handle, &error);
-                let _ = handle.command(TransportCommand::Close).await;
+                let _ = handle
+                    .command(TransportCommand::RunFinished {
+                        generation: generation.id,
+                        finish: TransportFinish::Failed(error),
+                    })
+                    .await;
                 return;
             }
         };
@@ -520,8 +603,12 @@ fn spawn_run_request(
             {
                 CommandResult::Applied | CommandResult::Duplicate => {
                     if !generation.superseded.is_cancelled() {
-                        super::finish_success(&handle);
-                        let _ = handle.command(TransportCommand::Close).await;
+                        let _ = handle
+                            .command(TransportCommand::RunFinished {
+                                generation: generation.id,
+                                finish: TransportFinish::Success,
+                            })
+                            .await;
                     }
                     return;
                 }
@@ -545,8 +632,12 @@ fn spawn_run_request(
                 }
                 CommandResult::StaleTarget => {
                     if !generation.superseded.is_cancelled() {
-                        super::finish_success(&handle);
-                        let _ = handle.command(TransportCommand::Close).await;
+                        let _ = handle
+                            .command(TransportCommand::RunFinished {
+                                generation: generation.id,
+                                finish: TransportFinish::Success,
+                            })
+                            .await;
                     }
                     return;
                 }
@@ -605,16 +696,21 @@ fn spawn_run_request(
                 tool_runtime: generation.tool_runtime.clone(),
             },
         );
-        if let Err(error) = output.run().await {
-            if !generation.superseded.is_cancelled() {
-                tracing::error!(
-                    request_id = handle.request_id(),
-                    %error,
-                    "Cursor session failed"
-                );
-                let _ = super::finish_failed(&handle, &error);
+        let finish = match output.run().await {
+            Ok(finish) => finish,
+            Err(error) => {
+                if generation.superseded.is_cancelled() {
+                    TransportFinish::Cancelled
+                } else {
+                    tracing::error!(
+                        request_id = handle.request_id(),
+                        %error,
+                        "Cursor session failed"
+                    );
+                    TransportFinish::Failed(error)
+                }
             }
-        }
+        };
         let _ = core_run.await;
         registry.release(&conversation_id, &run_id).await;
         if generation
@@ -626,7 +722,12 @@ fn spawn_run_request(
             *generation.run.lock() = None;
         }
         if !generation.superseded.is_cancelled() {
-            let _ = handle.command(TransportCommand::Close).await;
+            let _ = handle
+                .command(TransportCommand::RunFinished {
+                    generation: generation.id,
+                    finish,
+                })
+                .await;
         }
     });
 }
