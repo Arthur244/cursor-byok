@@ -420,7 +420,12 @@ fn responses_input(messages: &[ProjectedMessage]) -> Result<Vec<Value>> {
                         .ok_or_else(|| {
                             Error::Protocol("OpenAI Responses replay state is missing items".into())
                         })?;
-                    input.extend(items.iter().cloned());
+                    input.extend(
+                        items
+                            .iter()
+                            .map(response_reasoning_input)
+                            .collect::<Result<Vec<_>>>()?,
+                    );
                 }
                 push_responses_text(&mut input, &message.role, text);
                 for call in calls {
@@ -435,6 +440,23 @@ fn responses_input(messages: &[ProjectedMessage]) -> Result<Vec<Value>> {
         }
     }
     Ok(input)
+}
+
+fn response_reasoning_input(item: &Value) -> Result<Value> {
+    let source = item
+        .as_object()
+        .filter(|object| object.get("type").and_then(Value::as_str) == Some("reasoning"))
+        .ok_or_else(|| {
+            Error::Protocol("OpenAI Responses replay state contains a non-reasoning item".into())
+        })?;
+    let mut projected = Map::new();
+    projected.insert("type".into(), json!("reasoning"));
+    for field in ["id", "summary", "content", "encrypted_content"] {
+        if let Some(value) = source.get(field) {
+            projected.insert(field.into(), value.clone());
+        }
+    }
+    Ok(Value::Object(projected))
 }
 
 fn push_responses_parts(input: &mut Vec<Value>, role: &Role, parts: &[ContentPart]) -> Result<()> {
@@ -515,5 +537,49 @@ fn responses_usage(value: &Value) -> Usage {
         reasoning_tokens: value
             .pointer("/output_tokens_details/reasoning_tokens")
             .and_then(Value::as_u64),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::ProviderReplayState;
+
+    #[test]
+    fn reasoning_replay_projects_response_items_to_valid_input_items() {
+        let messages = [ProjectedMessage {
+            message_id: "assistant-1".into(),
+            role: Role::Assistant,
+            content: ProjectedContent::Assistant {
+                text: String::new(),
+                thinking: String::new(),
+                replay_state: Some(ProviderReplayState {
+                    provider_kind: "openai_responses".into(),
+                    value: json!({
+                        "items": [{
+                            "type": "reasoning",
+                            "id": "item-1",
+                            "status": "completed",
+                            "summary": [{"type": "summary_text", "text": "why"}],
+                            "content": [],
+                            "encrypted_content": "opaque",
+                            "output_only": true
+                        }]
+                    }),
+                }),
+                calls: Vec::new(),
+            },
+        }];
+
+        assert_eq!(
+            responses_input(&messages).unwrap(),
+            vec![json!({
+                "type": "reasoning",
+                "id": "item-1",
+                "summary": [{"type": "summary_text", "text": "why"}],
+                "content": [],
+                "encrypted_content": "opaque"
+            })]
+        );
     }
 }

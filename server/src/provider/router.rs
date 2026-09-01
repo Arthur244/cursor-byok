@@ -62,7 +62,6 @@ impl Provider for ProviderRouter {
                     let plan = plugins.plan_model(&selected).await?;
                     let recorder = start_recorder(&store, &invocation, &selected, &plan.model.display_name, ProviderType::Plugin, &plan.request_url, &plan.model.model_id).await?;
                     let guard = recorder.cancel_on_drop();
-                    recorder.request(serde_json::json!({}), &crate::plugin::plugin_llm_request(&invocation)?).await?;
                     let mut routed = invocation.clone();
                     routed.request.model.display_name = Some(plan.model.display_name.clone());
                     if let Some(tokens) = plan.model.max_output_tokens {
@@ -70,6 +69,7 @@ impl Provider for ProviderRouter {
                     }
                     let provider: Arc<dyn Provider> = Arc::new(NormalizedProvider::new(Arc::new(PluginModelProvider {
                         registry: plugins.clone(),
+                        recorder: recorder.clone(),
                     })));
                     (recorder, guard, provider.stream(routed, cancellation.clone()))
                 } else {
@@ -227,6 +227,7 @@ async fn finish_stream(recorder: &CallRecorder, cancellation: &CancellationToken
 /// 插件模型的 Provider 实现;对路由与规范化层完全等同于内置 Provider。
 struct PluginModelProvider {
     registry: PluginRegistry,
+    recorder: CallRecorder,
 }
 
 impl Provider for PluginModelProvider {
@@ -235,7 +236,8 @@ impl Provider for PluginModelProvider {
         invocation: ModelInvocation,
         cancellation: CancellationToken,
     ) -> ProviderStream {
-        self.registry.stream_model(invocation, cancellation)
+        self.registry
+            .stream_model(invocation, cancellation, self.recorder.clone())
     }
 }
 
