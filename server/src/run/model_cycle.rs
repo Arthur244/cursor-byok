@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    model::{ProviderReplayState, ToolCall, Usage},
+    model::{normalize_tool_name, ProviderReplayState, ToolCall, Usage},
     provider::{FinishReason, ModelEvent, ProviderStream},
 };
 
@@ -165,6 +165,7 @@ pub async fn consume_model_cycle(
                 call_id,
                 name,
             } => {
+                let name = normalize_tool_name(&name);
                 let Some(model_call_id) = model_call_id.as_ref() else {
                     return Err(failure(
                         RunFailure::Protocol("provider emitted content before Start".into()),
@@ -405,6 +406,34 @@ mod tests {
         provider::{FinishReason, ModelEvent},
     };
     use tokio_stream::wrappers::ReceiverStream;
+
+    #[tokio::test]
+    async fn provider_tool_names_are_normalized_when_received() {
+        let events = vec![
+            Ok(ModelEvent::Start {
+                model_call_id: "call".into(),
+            }),
+            Ok(ModelEvent::ToolCallStart {
+                index: 0,
+                call_id: "tool-call".into(),
+                name: "multi_tool_use.parallel".into(),
+            }),
+            Ok(ModelEvent::ToolCallEnd { index: 0 }),
+            Ok(ModelEvent::Done(FinishReason::ToolUse)),
+        ];
+        let stream = Box::pin(tokio_stream::iter(events));
+        let (event_tx, mut event_rx) = tokio::sync::mpsc::channel(4);
+
+        let result = consume_model_cycle(stream, &event_tx, &CancellationToken::new())
+            .await
+            .unwrap();
+
+        assert_eq!(result.calls[0].name, "multi_tool_use_parallel");
+        assert!(matches!(
+            event_rx.recv().await,
+            Some(RunEvent::ToolCallStart { name, .. }) if name == "multi_tool_use_parallel"
+        ));
+    }
 
     #[tokio::test]
     async fn usage_is_forwarded_before_the_provider_call_finishes() {

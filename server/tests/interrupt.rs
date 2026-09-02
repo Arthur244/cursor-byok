@@ -423,6 +423,85 @@ async fn runtime_cancel_action_aborts_active_exec_before_canceled_end_stream() {
 }
 
 #[tokio::test]
+async fn queued_user_message_after_turn_ended_starts_the_next_turn() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(text_response("first turn"));
+    provider.push(text_response("queued turn"));
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store,
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+    let handle = registry.get_or_create("queued-after-turn").await.unwrap();
+    let mut output = handle.subscribe();
+    handle
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(client_run_for(
+                "queued-after-turn",
+                "queued-after-turn-conversation",
+            )),
+        })
+        .await
+        .unwrap();
+
+    let mut append_seqno = 1;
+    wait_for_turn_ended(&handle, &mut output, &mut append_seqno).await;
+    assert_transport_remains_open(&handle, &mut output, &mut append_seqno).await;
+
+    cursor_server::api::cursor::bidi::append(
+        &registry,
+        cursor_server::api::cursor::bidi::DecodedAppend {
+            request_id: "queued-after-turn".into(),
+            seqno: append_seqno,
+            message: runtime_user_message(),
+        },
+        None,
+    )
+    .await
+    .unwrap();
+    append_seqno += 1;
+
+    let mut text = String::new();
+    loop {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(5), output.recv())
+            .await
+            .unwrap()
+            .expect("queued turn closed without EndStream");
+        let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+        if flags & connect::END_STREAM_FLAG != 0 {
+            assert_eq!(payload.as_ref(), b"{}");
+            break;
+        }
+        let server = pb::AgentServerMessage::decode(payload).unwrap();
+        if let Some(pb::agent_server_message::Message::InteractionUpdate(update)) = server.message {
+            if let Some(pb::interaction_update::Message::TextDelta(delta)) = update.message {
+                text.push_str(&delta.text);
+            }
+        }
+        acknowledge_kv(&handle, &mut append_seqno, &frame).await;
+    }
+
+    assert!(text.contains("queued turn"));
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(
+        &requests[1].history[..requests[0].history.len()],
+        requests[0].history.as_slice(),
+        "queued continuation must preserve the first provider request as a prefix"
+    );
+    let history = serde_json::to_string(&requests[1].history).unwrap();
+    assert!(history.contains("queued follow-up"));
+}
+
+#[tokio::test]
 async fn runtime_user_message_action_interrupts_and_continues_with_new_message() {
     let (_directory, store) = fixtures::temp_store().await;
     let provider = fake_provider::FakeProvider::default();
@@ -1729,6 +1808,55 @@ async fn run_to_end(
             state = Some(update);
         }
         acknowledge_kv(&handle, &mut append_seqno, &frame).await;
+    }
+}
+
+async fn wait_for_turn_ended(
+    handle: &cursor_server::cursor::TransportHandle,
+    output: &mut tokio::sync::mpsc::UnboundedReceiver<Bytes>,
+    append_seqno: &mut i64,
+) {
+    loop {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(5), output.recv())
+            .await
+            .unwrap()
+            .expect("RunSSE closed before turnEnded");
+        let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+        assert_eq!(flags & connect::END_STREAM_FLAG, 0);
+        let server = pb::AgentServerMessage::decode(payload).unwrap();
+        let turn_ended = matches!(
+            server.message,
+            Some(pb::agent_server_message::Message::InteractionUpdate(
+                pb::InteractionUpdate {
+                    message: Some(pb::interaction_update::Message::TurnEnded(_)),
+                }
+            ))
+        );
+        acknowledge_kv(handle, append_seqno, &frame).await;
+        if turn_ended {
+            return;
+        }
+    }
+}
+
+async fn assert_transport_remains_open(
+    handle: &cursor_server::cursor::TransportHandle,
+    output: &mut tokio::sync::mpsc::UnboundedReceiver<Bytes>,
+    append_seqno: &mut i64,
+) {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(100);
+    loop {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        let Ok(Some(frame)) = tokio::time::timeout(remaining, output.recv()).await else {
+            return;
+        };
+        let (flags, _) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+        assert_eq!(
+            flags & connect::END_STREAM_FLAG,
+            0,
+            "turnEnded closed the transport before the queued action arrived"
+        );
+        acknowledge_kv(handle, append_seqno, &frame).await;
     }
 }
 

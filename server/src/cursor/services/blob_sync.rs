@@ -76,22 +76,20 @@ impl BlobSynchronizer {
         let id = self.inner.store.put_blob(data, edges).await?;
         let result = self.ensure_set(&id, data).await;
         if let Some(trace) = self.inner.handle.trace() {
-            trace
-                .linked_blob(
-                    "blob_set",
-                    "byok_server",
-                    &id,
-                    serde_json::json!({
-                        "byte_count": data.len(),
-                        "status": if result.is_ok() { "acknowledged" } else { "error" },
-                        "error": result.as_ref().err().map(ToString::to_string),
-                        "edges": edges.iter().map(|edge| serde_json::json!({
-                            "child_blob_id": edge.child.to_base64(),
-                            "field_name": edge.field_name,
-                        })).collect::<Vec<_>>(),
-                    }),
-                )
-                .await;
+            trace.linked_blob(
+                "blob_set",
+                "byok_server",
+                &id,
+                serde_json::json!({
+                    "byte_count": data.len(),
+                    "status": if result.is_ok() { "acknowledged" } else { "error" },
+                    "error": result.as_ref().err().map(ToString::to_string),
+                    "edges": edges.iter().map(|edge| serde_json::json!({
+                        "child_blob_id": edge.child.to_base64(),
+                        "field_name": edge.field_name,
+                    })).collect::<Vec<_>>(),
+                }),
+            );
         }
         result?;
         Ok(id)
@@ -144,18 +142,16 @@ impl BlobSynchronizer {
     pub async fn get(&self, blob_id: &BlobId) -> Result<Option<Vec<u8>>> {
         if let Some(data) = self.inner.store.get_blob(blob_id).await? {
             if let Some(trace) = self.inner.handle.trace() {
-                trace
-                    .linked_blob(
-                        "blob_get",
-                        "byok_server",
-                        blob_id,
-                        serde_json::json!({
-                            "byte_count": data.len(),
-                            "source": "local_store",
-                            "status": "found",
-                        }),
-                    )
-                    .await;
+                trace.linked_blob(
+                    "blob_get",
+                    "byok_server",
+                    blob_id,
+                    serde_json::json!({
+                        "byte_count": data.len(),
+                        "source": "local_store",
+                        "status": "found",
+                    }),
+                );
             }
             return Ok(Some(data));
         }
@@ -194,45 +190,39 @@ impl BlobSynchronizer {
         if let Some(trace) = self.inner.handle.trace() {
             match &result {
                 Ok(Some(data)) => {
-                    trace
-                        .linked_blob(
-                            "blob_get",
-                            "cursor_client",
-                            blob_id,
-                            serde_json::json!({
-                                "byte_count": data.len(),
-                                "source": "cursor_client",
-                                "status": "found",
-                            }),
-                        )
-                        .await;
+                    trace.linked_blob(
+                        "blob_get",
+                        "cursor_client",
+                        blob_id,
+                        serde_json::json!({
+                            "byte_count": data.len(),
+                            "source": "cursor_client",
+                            "status": "found",
+                        }),
+                    );
                 }
                 Ok(None) => {
-                    trace
-                        .artifact(
-                            "blob_get",
-                            "cursor_client",
-                            &[],
-                            serde_json::json!({
-                                "blob_id": blob_id.to_base64(),
-                                "status": "missing",
-                            }),
-                        )
-                        .await;
+                    trace.artifact(
+                        "blob_get",
+                        "cursor_client",
+                        &[],
+                        serde_json::json!({
+                            "blob_id": blob_id.to_base64(),
+                            "status": "missing",
+                        }),
+                    );
                 }
                 Err(error) => {
-                    trace
-                        .artifact(
-                            "blob_get",
-                            "cursor_client",
-                            &[],
-                            serde_json::json!({
-                                "blob_id": blob_id.to_base64(),
-                                "status": "error",
-                                "error": error.to_string(),
-                            }),
-                        )
-                        .await;
+                    trace.artifact(
+                        "blob_get",
+                        "cursor_client",
+                        &[],
+                        serde_json::json!({
+                            "blob_id": blob_id.to_base64(),
+                            "status": "error",
+                            "error": error.to_string(),
+                        }),
+                    );
                 }
             }
         }
