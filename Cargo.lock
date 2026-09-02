@@ -1188,12 +1188,15 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
+ "tempfile",
  "tokio",
  "tokio-util",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
  "url",
+ "windows-sys 0.61.2",
+ "zip",
 ]
 
 [[package]]

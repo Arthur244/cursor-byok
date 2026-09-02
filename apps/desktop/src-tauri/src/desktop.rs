@@ -177,7 +177,11 @@ pub fn run() -> ExitCode {
     let started_by_autostart = std::env::args_os().any(|arg| arg == AUTOSTART_ARG);
 
     let app = tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![open_terminal_with_command])
+        .invoke_handler(tauri::generate_handler![
+            open_terminal_with_command,
+            crate::update::check_portable_update,
+            crate::update::install_portable_update,
+        ])
         .plugin(tauri_plugin_single_instance::init(|app, args, _| {
             if !args.iter().any(|arg| arg == AUTOSTART_ARG) {
                 tray::show_main_window(app);
@@ -245,6 +249,7 @@ pub fn run() -> ExitCode {
                 window.set_focus()?;
             }
             tray::create(app)?;
+            crate::update::signal_ready_if_requested()?;
             Ok(())
         })
         .build(tauri::generate_context!());
