@@ -3,6 +3,12 @@
 use crate::{cursor::protocol::proto::agent::v1 as pb, Error};
 
 #[derive(Debug)]
+pub enum RunFinish {
+    TurnCompleted,
+    Transport(TransportFinish),
+}
+
+#[derive(Debug)]
 pub enum TransportFinish {
     Success,
     Failed(Error),
@@ -17,7 +23,7 @@ pub enum TransportCommand {
     },
     RunFinished {
         generation: u64,
-        finish: TransportFinish,
+        finish: RunFinish,
     },
     Disconnect,
 }

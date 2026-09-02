@@ -42,6 +42,7 @@ pub struct ControlService {
     plugin_runtime: PluginRuntime,
     plugins: PluginRegistry,
     clients: crate::network::NetworkClients,
+    app_version: String,
     model_tests: Arc<Mutex<BTreeMap<String, CancellationToken>>>,
 }
 
@@ -153,6 +154,7 @@ impl ControlService {
         plugin_runtime: PluginRuntime,
         plugins: PluginRegistry,
         clients: crate::network::NetworkClients,
+        app_version: String,
     ) -> Result<Self> {
         Ok(Self {
             cursor_harness: CursorHarness::new(store.clone())?,
@@ -161,6 +163,7 @@ impl ControlService {
             plugin_runtime,
             plugins,
             clients,
+            app_version,
             model_tests: Arc::new(Mutex::new(BTreeMap::new())),
         })
     }
@@ -265,7 +268,7 @@ impl ControlService {
             .get(ADS_ENDPOINT)
             .header(DEVICE_ID_HEADER, installation_id)
             .header(OS_HEADER, std::env::consts::OS)
-            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+            .header(APP_VERSION_HEADER, &self.app_version)
             .header(LANGUAGE_HEADER, language)
             .timeout(std::time::Duration::from_secs(60));
         if let Some(disabled_ad_ids) = disabled_ad_ids.filter(|value| !value.is_empty()) {
@@ -299,7 +302,7 @@ impl ControlService {
             .post(endpoint)
             .header(DEVICE_ID_HEADER, installation_id)
             .header(OS_HEADER, std::env::consts::OS)
-            .header(APP_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+            .header(APP_VERSION_HEADER, &self.app_version)
             .json(input)
             .timeout(std::time::Duration::from_secs(5))
             .send()
